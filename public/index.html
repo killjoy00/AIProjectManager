@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#ECEEF1" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Build Log — Machine State</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%232B4BF2'/><circle cx='16' cy='16' r='6' fill='white'/></svg>" />
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%232B4BF2'/><circle cx='16' cy='16' r='6' fill='white'/></svg>" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{--paper:#ECEEF1;--card:#FFF;--ink:#16181D;--muted:#71757E;--line:#DEE1E6;--accent:#2B4BF2;
+    --danger:#C0392B;--ok:#1FA971;--warn:#E8912D;--hot:#EE5A36}
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{min-height:100vh;background:var(--paper);color:var(--ink);
+    font-family:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+    background-image:linear-gradient(#DEE1E655 1px,transparent 1px),linear-gradient(90deg,#DEE1E655 1px,transparent 1px);
+    background-size:26px 26px;-webkit-text-size-adjust:100%}
+  .mono{font-family:'IBM Plex Mono',monospace}
+  .disp{font-family:'Space Grotesk',sans-serif}
+  *:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  button{font-family:inherit}
+  a{color:var(--accent)}
+  .wrap{max-width:1160px;margin:0 auto;padding:28px 22px 64px}
+
+  /* lock screen */
+  #lock{position:fixed;inset:0;background:var(--paper);display:flex;align-items:center;
+    justify-content:center;padding:24px;z-index:50}
+  .lockbox{background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:26px;max-width:360px;width:100%;box-shadow:0 8px 30px rgba(20,24,35,.07)}
+  .lockbox h2{font-size:20px;margin:10px 0 4px;font-weight:600}
+  .lockbox p{font-size:13px;color:var(--muted);margin:0 0 16px}
+  .lockin{width:100%;font-size:15px;padding:11px 12px;border:1px solid var(--line);
+    border-radius:9px;font-family:inherit;outline:none;color:var(--ink)}
+  .lockbtn{width:100%;margin-top:10px;font-family:'IBM Plex Mono',monospace;font-size:12px;
+    letter-spacing:.06em;text-transform:uppercase;color:#fff;background:var(--accent);
+    border:none;border-radius:9px;padding:12px;cursor:pointer}
+  .lockerr{font-size:12.5px;color:var(--danger);margin-top:10px;min-height:16px}
+
+  .top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+  .kicker{font-size:11px;letter-spacing:.18em;color:var(--accent);text-transform:uppercase}
+  h1{font-size:32px;font-weight:700;margin:4px 0 0;letter-spacing:-.02em}
+  .sub{color:var(--muted);font-size:14px;margin:6px 0 0}
+  .ctrl{font-size:11px;letter-spacing:.04em;color:var(--ink);background:var(--card);
+    border:1px solid var(--line);border-radius:8px;padding:7px 12px;cursor:pointer}
+  .ctrl:hover{border-color:var(--accent);color:var(--accent)}
+  #sync{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);
+    display:flex;align-items:center;gap:6px;margin-top:8px;justify-content:flex-end}
+  #sync .sdot{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+
+  .banner{background:#FFF6E8;border:1px solid #E8912D66;color:#8A5512;border-radius:10px;
+    padding:10px 12px;font-size:13px;margin:14px 0 0;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .banner button{font-size:12px;border:1px solid #E8912D88;background:#fff;color:#8A5512;
+    border-radius:7px;padding:5px 10px;cursor:pointer}
+
+  /* health strip — the first thing you should see */
+  .health{margin-top:18px;border-radius:12px;padding:16px 18px;border:1px solid var(--line);
+    background:var(--card);display:flex;gap:14px;align-items:flex-start}
+  .health.ok{border-color:#1FA97155;background:#1FA9710A}
+  .health.stale{border-color:#E8912D77;background:#E8912D0F}
+  .health.down{border-color:#C0392B77;background:#C0392B0F}
+  .hdot{width:12px;height:12px;border-radius:50%;flex-shrink:0;margin-top:5px;background:var(--muted)}
+  .health.ok .hdot{background:var(--ok)}
+  .health.stale .hdot{background:var(--warn)}
+  .health.down .hdot{background:var(--danger)}
+  .htitle{font-weight:600;font-size:15px}
+  .hmsg{font-size:13px;color:var(--muted);margin-top:3px;line-height:1.5}
+  .hmeta{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);margin-top:8px;
+    display:flex;gap:14px;flex-wrap:wrap}
+
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-top:14px}
+  .ptitle{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:8px}
+  .pcount{background:var(--ink);color:#fff;border-radius:20px;padding:1px 7px;font-size:10px}
+  .pcount.zero{background:var(--line);color:var(--muted)}
+  .pcount.bad{background:var(--danger)}
+
+  .cols{display:grid;grid-template-columns:1fr;gap:14px}
+  @media(min-width:900px){.cols{grid-template-columns:1.35fr 1fr}}
+
+  .item{display:flex;gap:10px;align-items:baseline;padding:9px 0;border-bottom:1px solid var(--line)}
+  .item:last-child{border-bottom:none}
+  .item:first-of-type{padding-top:12px}
+  .tagm{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;
+    border-radius:4px;padding:2px 6px;flex-shrink:0;border:1px solid}
+  .t-blocked{color:var(--danger);border-color:#C0392B55;background:#C0392B0D}
+  .t-gate{color:var(--accent);border-color:#2B4BF255;background:#2B4BF20D}
+  .t-pr{color:var(--ok);border-color:#1FA97155;background:#1FA9710D}
+  .t-charter{color:var(--warn);border-color:#E8912D66;background:#E8912D0D}
+  .iname{font-size:13.5px;flex:1;min-width:0;line-height:1.45}
+  .iname a{text-decoration:none}
+  .iname a:hover{text-decoration:underline}
+  .idays{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);flex-shrink:0}
+  .empty{color:var(--muted);font-size:13px;padding:14px 0 4px;font-style:italic}
+
+  /* portfolio meter */
+  .meter{margin-top:12px}
+  .bar{height:10px;border-radius:6px;background:var(--line);overflow:hidden;display:flex}
+  .bar span{display:block;height:100%}
+  .bar .hot{background:var(--hot)}
+  .bar .act{background:#2B7FFF}
+  .bar .over{background:var(--danger)}
+  .mnum{display:flex;justify-content:space-between;align-items:baseline;margin-top:8px;
+    font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--muted)}
+  .mbig{font-family:'Space Grotesk',sans-serif;font-size:26px;font-weight:700;color:var(--ink)}
+  .over-note{color:var(--danger);font-size:12.5px;margin-top:8px;font-weight:500}
+
+  /* spend */
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:12px;margin-top:12px}
+  .stat{text-align:left}
+  .snum{font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:600}
+  .slab{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--muted);margin-top:1px}
+  .snum.bad{color:var(--danger)}
+  .foot-note{font-size:11.5px;color:var(--muted);margin-top:12px;line-height:1.5}
+
+  /* agent activity */
+  .act-item{padding:10px 0;border-bottom:1px solid var(--line)}
+  .act-item:last-child{border-bottom:none}
+  .act-head{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+  .act-when{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--muted);flex-shrink:0}
+  .act-body{font-size:12.5px;color:var(--muted);margin-top:4px;line-height:1.55;
+    display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+
+  /* capture */
+  .bare{border:none;outline:none;font-family:inherit;background:transparent;width:100%}
+  #capT{font-size:15px;font-weight:500;color:var(--ink)}
+  #capW{font-size:13px;color:var(--muted);flex:1}
+  .row{display:flex;gap:10px;margin-top:10px;align-items:center}
+  .add{font-size:12px;letter-spacing:.05em;color:#fff;background:var(--accent);border:none;
+    border-radius:8px;padding:9px 16px;cursor:pointer;text-transform:uppercase;
+    font-family:'IBM Plex Mono',monospace}
+  .add[disabled]{opacity:.5;cursor:default}
+  .flash{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ok);margin-top:10px}
+  .flash.err{color:var(--danger)}
+
+  .pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:20px;
+    padding:3px 10px;font-size:11.5px;color:var(--muted);margin:0 6px 6px 0}
+  .pill .dot{width:7px;height:7px;border-radius:50%}
+  @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div id="lock">
+  <div class="lockbox">
+    <div class="kicker mono">Build Log</div>
+    <h2 class="disp">Machine State</h2>
+    <p>Enter your passphrase to unlock.</p>
+    <input id="passIn" class="lockin" type="password" placeholder="Passphrase" autocomplete="current-password" />
+    <button id="unlockBtn" class="lockbtn">Unlock</button>
+    <div class="lockerr" id="lockErr"></div>
+  </div>
+</div>
+
+<div class="wrap" id="app" style="display:none">
+  <div class="top">
+    <div>
+      <div class="kicker mono">Build Log</div>
+      <h1 class="disp">Machine State</h1>
+      <p class="sub">What ran, what's stalled, and what's waiting on you. Issues live on GitHub.</p>
+    </div>
+    <div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
+        <a class="ctrl mono" id="repoLink" href="#" target="_blank" rel="noreferrer"
+           style="text-decoration:none;display:inline-block">↗ Issues</a>
+        <button class="ctrl mono" id="refreshBtn">⟳ Refresh</button>
+        <button class="ctrl mono" id="lockBtn">Lock</button>
+      </div>
+      <div id="sync"><span class="sdot"></span><span id="syncTxt">ready</span></div>
+    </div>
+  </div>
+
+  <div id="banner"></div>
+  <div id="health" class="health"><span class="hdot"></span><div><div class="htitle">Loading…</div></div></div>
+
+  <div class="panel">
+    <div class="ptitle">Quick capture <span style="text-transform:none;letter-spacing:0">— creates a GitHub issue in <code>background</code></span></div>
+    <div style="margin-top:10px">
+      <input id="capT" class="bare" placeholder="New idea — what is it?" />
+      <div class="row">
+        <input id="capW" class="bare" placeholder="why it's interesting (optional)" />
+        <button class="add" id="capBtn">Add</button>
+      </div>
+      <div id="capMsg" class="flash" style="display:none"></div>
+    </div>
+  </div>
+
+  <div class="cols">
+    <div>
+      <div class="panel">
+        <div class="ptitle">Waiting on you <span class="pcount" id="wCount">0</span></div>
+        <div id="waiting"></div>
+      </div>
+
+      <div class="panel">
+        <div class="ptitle">Stalled <span class="pcount" id="sCount">0</span></div>
+        <div id="stalled"></div>
+      </div>
+
+      <div class="panel">
+        <div class="ptitle">Recent agent activity</div>
+        <div id="activity"></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="panel">
+        <div class="ptitle">Portfolio load</div>
+        <div id="portfolio"></div>
+      </div>
+
+      <div class="panel">
+        <div class="ptitle">Spend — last 7 days</div>
+        <div id="spend"></div>
+      </div>
+
+      <div class="panel">
+        <div class="ptitle">Latest brief</div>
+        <div id="brief"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var PASS_KEY  = "ai-ideas:pass";
+  var CACHE_KEY = "ai-ideas:dash";
+  var API       = "/api/dashboard";
+  var CAPTURE   = "/api/ideas";
+
+  var pass = "", data = null;
+
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = function (s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  };
+  var plural = function (n, w) { return n + " " + w + (n === 1 ? "" : "s"); };
+  var ago = function (iso) {
+    if (!iso) return "never";
+    var mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return mins + "m ago";
+    var h = Math.floor(mins / 60);
+    if (h < 24) return h + "h ago";
+    return Math.floor(h / 24) + "d ago";
+  };
+
+  function setSync(text, color) {
+    $("syncTxt").textContent = text;
+    document.querySelector("#sync .sdot").style.background = color || "var(--muted)";
+  }
+  function banner(html) { $("banner").innerHTML = html || ""; }
+
+  function cacheSave() { try { localStorage.setItem(CACHE_KEY, JSON.stringify(data)); } catch (e) {} }
+  function cacheLoad() {
+    try {
+      var raw = localStorage.getItem(CACHE_KEY);
+      if (!raw) return false;
+      data = JSON.parse(raw);
+      return !!data;
+    } catch (e) { return false; }
+  }
+
+  // ── network ──────────────────────────────────────────────
+  function pull(fresh) {
+    setSync("syncing…", "#2B7FFF");
+    return fetch(API + (fresh ? "?fresh=1" : ""), { headers: { "x-auth": pass }, cache: "no-store" })
+      .then(function (r) {
+        if (r.status === 401) { lockOut("Passphrase rejected."); throw new Error("auth"); }
+        return r.json().then(function (body) {
+          if (!r.ok) throw new Error(body.error || ("http " + r.status));
+          return body;
+        });
+      })
+      .then(function (d) {
+        data = d; cacheSave(); render();
+        if (d.stale) {
+          setSync("stale", "#E8912D");
+          banner('<span>GitHub call failed — showing the last good copy.</span><button id="retryBtn">Retry</button>');
+        } else {
+          setSync(d.cached ? "cached" : "live", "#1FA971");
+          banner("");
+        }
+      })
+      .catch(function (e) {
+        if (e.message === "auth") return;
+        setSync("offline", "#C0392B");
+        banner('<span>Couldn\'t reach the server' +
+          (e.message ? ' (' + esc(e.message) + ')' : '') +
+          ' — showing your last saved copy.</span><button id="retryBtn">Retry</button>');
+      });
+  }
+
+  // ── lock screen ──────────────────────────────────────────
+  function lockOut(msg) {
+    pass = ""; try { localStorage.removeItem(PASS_KEY); } catch (e) {}
+    $("app").style.display = "none";
+    $("lock").style.display = "flex";
+    $("lockErr").textContent = msg || "";
+    $("passIn").value = "";
+  }
+  function unlock() {
+    var v = $("passIn").value;
+    if (!v) return;
+    $("lockErr").textContent = "Checking…";
+    fetch(API, { headers: { "x-auth": v }, cache: "no-store" })
+      .then(function (r) {
+        if (r.status === 401) { $("lockErr").textContent = "Wrong passphrase."; return null; }
+        return r.json().then(function (body) {
+          if (!r.ok && !body.generated) throw new Error(body.error || ("http " + r.status));
+          return body;
+        });
+      })
+      .then(function (d) {
+        if (!d) return;
+        pass = v; try { localStorage.setItem(PASS_KEY, v); } catch (e) {}
+        data = d; cacheSave();
+        $("lock").style.display = "none";
+        $("app").style.display = "";
+        setSync(d.cached ? "cached" : "live", "#1FA971");
+        render();
+      })
+      .catch(function (e) {
+        $("lockErr").textContent = "Couldn't reach the server (" + e.message + "). Try again.";
+      });
+  }
+  $("unlockBtn").addEventListener("click", unlock);
+  $("passIn").addEventListener("keydown", function (e) { if (e.key === "Enter") unlock(); });
+  $("lockBtn").addEventListener("click", function () { lockOut(""); });
+  $("refreshBtn").addEventListener("click", function () { pull(true); });
+  document.addEventListener("click", function (e) {
+    if (e.target && e.target.id === "retryBtn") { banner(""); pull(true); }
+  });
+
+  // ── render ───────────────────────────────────────────────
+  function renderHealth() {
+    var h = (data && data.health) || { state: "down", message: "No data." };
+    var el = $("health");
+    el.className = "health " + (h.state || "down");
+    var titles = { ok: "Machine is running", stale: "Machine may have stopped", down: "Machine is down" };
+    var meta = [];
+    if (h.nightly) meta.push("nightly: " + ago(h.nightly.at));
+    if (h.brief) meta.push("brief: " + ago(h.brief.at));
+    if (data && data.generated) meta.push("data: " + ago(data.generated));
+
+    el.innerHTML =
+      '<span class="hdot"></span><div style="flex:1;min-width:0">' +
+      '<div class="htitle">' + esc(titles[h.state] || "Unknown") + '</div>' +
+      '<div class="hmsg">' + esc(h.message || "") + '</div>' +
+      (meta.length ? '<div class="hmeta">' + meta.map(esc).join("</div><div class=\"hmeta\">") + '</div>' : "") +
+      (h.lastNightlyRun && h.lastNightlyRun.url
+        ? '<div class="hmeta"><a href="' + esc(h.lastNightlyRun.url) + '" target="_blank" rel="noreferrer">last run log ↗</a></div>'
+        : "") +
+      '</div>';
+  }
+
+  function renderWaiting() {
+    var list = (data && data.waitingOnYou) || [];
+    var c = $("wCount");
+    c.textContent = list.length;
+    c.className = "pcount" + (list.length === 0 ? " zero" : "");
+    $("waiting").innerHTML = list.length
+      ? list.map(function (w) {
+          return '<div class="item">' +
+            '<span class="tagm t-' + esc(w.kind) + '">' + esc(w.kind) + '</span>' +
+            '<span class="iname"><a href="' + esc(w.url) + '" target="_blank" rel="noreferrer">' +
+              esc(w.title) + '</a><br><span style="color:var(--muted);font-size:12px">' +
+              esc(w.label) + '</span></span>' +
+            '<span class="idays">' + (w.days == null ? "" : w.days + "d") + '</span></div>';
+        }).join("")
+      : '<div class="empty">Nothing. The machine isn\'t blocked on you.</div>';
+  }
+
+  function renderStalled() {
+    var list = (data && data.stalled) || [];
+    var days = (data && data.staleAfterDays) || 7;
+    var c = $("sCount");
+    c.textContent = list.length;
+    c.className = "pcount" + (list.length === 0 ? " zero" : " bad");
+    $("stalled").innerHTML = list.length
+      ? list.map(function (s) {
+          return '<div class="item"><span class="tagm t-charter">' + esc(s.status) + '</span>' +
+            '<span class="iname"><a href="' + esc(s.url) + '" target="_blank" rel="noreferrer">' +
+              esc(s.title) + '</a>' +
+            (s.repo ? ' <span style="color:var(--muted);font-size:11.5px">' + esc(s.repo) + '</span>' : "") +
+            '</span><span class="idays">' + s.days + 'd</span></div>';
+        }).join("")
+      : '<div class="empty">Everything active moved within ' + plural(days, "day") + '.</div>';
+  }
+
+  function renderPortfolio() {
+    var p = (data && data.portfolio) || { cap: 10, active: 0, hot: 0, background: 0, total: 0 };
+    var pct = function (n) { return Math.min(100, (n / p.cap) * 100); };
+    $("portfolio").innerHTML =
+      '<div class="meter">' +
+      '<div class="mnum"><span class="mbig">' + p.total + '<span style="font-size:14px;color:var(--muted)"> / ' + p.cap + '</span></span>' +
+      '<span>active + hot</span></div>' +
+      '<div class="bar" style="margin-top:8px">' +
+        '<span class="hot" style="width:' + pct(p.hot) + '%"></span>' +
+        '<span class="act" style="width:' + pct(p.active) + '%"></span>' +
+      '</div>' +
+      '<div style="margin-top:12px">' +
+        '<span class="pill"><span class="dot" style="background:var(--hot)"></span>' + p.hot + ' hot</span>' +
+        '<span class="pill"><span class="dot" style="background:#2B7FFF"></span>' + p.active + ' active</span>' +
+        '<span class="pill"><span class="dot" style="background:#9AA0A8"></span>' + p.background + ' background</span>' +
+      '</div>' +
+      (p.overCap
+        ? '<div class="over-note">Over the cap by ' + (p.total - p.cap) + '. Something needs to move to background or done.</div>'
+        : "") +
+      '</div>';
+  }
+
+  function renderSpend() {
+    var s = (data && data.spend) || {};
+    $("spend").innerHTML =
+      '<div class="stats">' +
+      '<div class="stat"><div class="snum">' + (s.runs || 0) + '</div><div class="slab">runs</div></div>' +
+      '<div class="stat"><div class="snum">' + (s.success || 0) + '</div><div class="slab">ok</div></div>' +
+      '<div class="stat"><div class="snum' + ((s.failure || s.timedOut) ? " bad" : "") + '">' +
+        ((s.failure || 0) + (s.timedOut || 0)) + '</div><div class="slab">failed</div></div>' +
+      '<div class="stat"><div class="snum">' + (s.minutes || 0) + '</div><div class="slab">minutes</div></div>' +
+      '</div>' +
+      '<div class="foot-note">' + esc(s.note || "") + '</div>';
+  }
+
+  function renderActivity() {
+    var list = (data && data.agentActivity) || [];
+    $("activity").innerHTML = list.length
+      ? list.map(function (a) {
+          return '<div class="act-item"><div class="act-head">' +
+            '<a href="' + esc(a.url) + '" target="_blank" rel="noreferrer" style="font-size:13px;text-decoration:none">#' +
+              esc(a.issue == null ? "?" : a.issue) + '</a>' +
+            '<span class="act-when">' + esc(ago(a.at)) + '</span></div>' +
+            '<div class="act-body">' + esc(a.excerpt) + '</div></div>';
+        }).join("")
+      : '<div class="empty">No agent comments yet. If the machine is green and this stays empty, ' +
+        'the agent is running but finding nothing to work on.</div>';
+  }
+
+  function renderBrief() {
+    var b = data && data.latestBrief;
+    $("brief").innerHTML = b
+      ? '<div style="padding-top:10px"><a href="' + esc(b.url) + '" target="_blank" rel="noreferrer" ' +
+        'style="font-size:14px;font-weight:600;text-decoration:none">' + esc(b.title) + ' ↗</a>' +
+        '<div style="font-size:12px;color:var(--muted);margin-top:4px">Posted ' + esc(ago(b.at)) + '</div></div>'
+      : '<div class="empty">No brief yet. The first one posts Monday at 07:00 CT.</div>';
+  }
+
+  function render() {
+    if (!data) return;
+    if (data.repo) $("repoLink").href = "https://github.com/" + data.repo + "/issues";
+    renderHealth();
+    renderWaiting();
+    renderStalled();
+    renderPortfolio();
+    renderSpend();
+    renderActivity();
+    renderBrief();
+  }
+
+  // ── quick capture — the one write ────────────────────────
+  function capMsg(text, isErr) {
+    var el = $("capMsg");
+    el.textContent = text;
+    el.className = "flash" + (isErr ? " err" : "");
+    el.style.display = text ? "" : "none";
+  }
+
+  function capture() {
+    var t = $("capT"), w = $("capW"), btn = $("capBtn");
+    var title = t.value.trim();
+    if (!title) return;
+
+    btn.disabled = true;
+    capMsg("Creating issue…", false);
+
+    fetch(CAPTURE, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-auth": pass },
+      body: JSON.stringify({ title: title, why: w.value.trim() })
+    })
+      .then(function (r) {
+        if (r.status === 401) { lockOut("Passphrase rejected."); throw new Error("auth"); }
+        return r.json().then(function (body) {
+          if (!r.ok) throw new Error(body.detail || body.error || ("http " + r.status));
+          return body;
+        });
+      })
+      .then(function (d) {
+        t.value = ""; w.value = "";
+        capMsg("Created #" + d.number + " ✓", false);
+        t.focus();
+        pull(true);
+      })
+      .catch(function (e) {
+        if (e.message === "auth") return;
+        capMsg("Couldn't create the issue: " + e.message, true);
+      })
+      .finally(function () { btn.disabled = false; });
+  }
+
+  $("capBtn").addEventListener("click", capture);
+  ["capT", "capW"].forEach(function (id) {
+    $(id).addEventListener("keydown", function (e) { if (e.key === "Enter") capture(); });
+  });
+
+  // ── boot ─────────────────────────────────────────────────
+  try { pass = localStorage.getItem(PASS_KEY) || ""; } catch (e) { pass = ""; }
+  if (pass) {
+    $("lock").style.display = "none";
+    $("app").style.display = "";
+    if (cacheLoad()) render();
+    pull(false);
+  } else {
+    $("passIn").focus();
+  }
+})();
+</script>
+</body>
+</html>

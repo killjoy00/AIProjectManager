@@ -1,0 +1,30 @@
+# dependencies
+node_modules/
+
+# wrangler / cloudflare
+.wrangler/
+.dev.vars
+.dev.vars.*
+dist/
+
+# agent run artifacts (generated per run, never committed)
+.agent/
+*.agent.json
+
+# secrets — nothing in this repo should ever hold one
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# editor / os
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# logs
+*.log
+npm-debug.log*

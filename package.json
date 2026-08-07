@@ -1,0 +1,24 @@
+{
+  "name": "ai-project-manager",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Control plane for a portfolio of small personal software projects, managed by scheduled agents.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "labels": "node scripts/setup-labels.mjs",
+    "context": "node scripts/collect-context.mjs",
+    "portfolio": "node scripts/portfolio-check.mjs",
+    "metrics": "node scripts/collect-metrics.mjs",
+    "post-triage": "node scripts/post-triage.mjs",
+    "post-brief": "node scripts/post-brief.mjs",
+    "heartbeat": "node scripts/heartbeat.mjs",
+    "deploy": "wrangler pages deploy public --project-name=$CF_PAGES_PROJECT",
+    "dev": "wrangler pages dev public"
+  },
+  "devDependencies": {
+    "wrangler": "^4.20.0"
+  }
+}

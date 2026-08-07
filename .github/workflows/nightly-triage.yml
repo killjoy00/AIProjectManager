@@ -1,0 +1,123 @@
+name: nightly-triage
+
+# 02:00 US Central. Cron is UTC and GitHub does not adjust for daylight saving, so this is
+# anchored to CDT (UTC-5); Nov–Mar it fires at 01:00 CT instead. Harmless — by design nothing
+# in this system is time-sensitive.
+#
+# The agent holds NO credentials. Three stages:
+#   1. collect-context.mjs  (has a token) -> .agent/context.json
+#   2. claude               (no token, no Bash, no network writes) -> .agent/triage.json
+#   3. post-triage.mjs      (has a token) -> posts, allowlisted to owner-authored issues
+# So "comment-only" is structural, not a promise in a prompt.
+
+on:
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+    inputs:
+      simulate_failure:
+        description: "Force a failure to test the alerting path"
+        type: boolean
+        default: false
+      dry_run:
+        description: "Run the agent but do not post comments"
+        type: boolean
+        default: false
+
+concurrency:
+  group: nightly-triage
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25   # hard stop; a run that hits this is reported as truncated, not silent
+    env:
+      GH_OWNER: ${{ github.repository_owner }}
+      GH_REPO: ${{ github.event.repository.name }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Simulate failure (test the alerting path)
+        if: inputs.simulate_failure
+        run: |
+          echo "Deliberate failure requested via workflow_dispatch."
+          echo "This exercises the heartbeat guarantee: a broken run must not be silent."
+          exit 1
+
+      - name: Collect context
+        env:
+          GH_API_TOKEN: ${{ secrets.GH_API_TOKEN }}
+        run: node scripts/collect-context.mjs
+
+      - name: Enforce portfolio cap
+        run: node scripts/portfolio-check.mjs
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      # No Bash, no gh, no credentials in the environment. The model can read the repo and write
+      # its output file — nothing else.
+      - name: Run triage agent
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          claude -p "$(cat docs/prompts/nightly-triage.md)" \
+            --allowedTools "Read,Write,Edit,Glob,Grep,WebSearch,WebFetch" \
+            --permission-mode acceptEdits \
+            --max-turns 60 \
+            --output-format text \
+            2>&1 | tee .agent/agent.log
+
+      - name: Verify the agent produced output
+        run: |
+          if [ ! -s .agent/triage.json ]; then
+            echo "::error::Agent did not write .agent/triage.json — treating as a failed run."
+            exit 1
+          fi
+          node -e "JSON.parse(require('fs').readFileSync('.agent/triage.json','utf8'))" \
+            || { echo "::error::.agent/triage.json is not valid JSON"; exit 1; }
+
+      - name: Post comments
+        if: ${{ !inputs.dry_run }}
+        run: node scripts/post-triage.mjs
+
+      - name: Dry run notice
+        if: ${{ inputs.dry_run }}
+        run: |
+          echo "::notice::Dry run — nothing posted. Agent output:"
+          cat .agent/triage.json
+
+      - name: Heartbeat
+        if: success() && !inputs.dry_run
+        env:
+          HEARTBEAT_URL: ${{ vars.HEARTBEAT_URL }}
+          HEARTBEAT_SECRET: ${{ secrets.HEARTBEAT_SECRET }}
+          HEARTBEAT_JOB: nightly-triage
+        run: node scripts/heartbeat.mjs
+
+      - name: Upload run artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: triage-${{ github.run_id }}
+          path: .agent/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      # Silence is never ambiguous: any failure above leaves a blocked:human issue behind.
+      - name: Report failure
+        if: failure()
+        env:
+          FAILED_JOB: nightly-triage
+        run: node scripts/report-failure.mjs

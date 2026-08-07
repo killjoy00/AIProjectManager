@@ -1,0 +1,85 @@
+name: deploy
+
+# Push to main -> production (ideas.planitnow.us).
+# Push to any other branch -> a preview URL, production untouched.
+#
+# The existing Pages project is a Direct Upload project, which cannot be converted to
+# Git-connected. `wrangler pages deploy` works against it either way and compiles the
+# functions/ directory (the dashboard drag-and-drop upload cannot). No DNS is involved.
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "public/**"
+      - "functions/**"
+      - ".github/workflows/deploy.yml"
+      - "package.json"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # Deploying without the Cloudflare secrets would fail confusingly. Skip loudly instead.
+      - name: Check deploy secrets
+        id: gate
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CF_PROJECT: ${{ vars.CF_PAGES_PROJECT }}
+        run: |
+          missing=""
+          [ -z "$CF_TOKEN" ]   && missing="$missing CLOUDFLARE_API_TOKEN"
+          [ -z "$CF_ACCOUNT" ] && missing="$missing CLOUDFLARE_ACCOUNT_ID"
+          [ -z "$CF_PROJECT" ] && missing="$missing CF_PAGES_PROJECT(variable)"
+          if [ -n "$missing" ]; then
+            echo "::warning::Deploy skipped — not configured yet:$missing"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.gate.outputs.ready == 'true'
+        with:
+          node-version: "22"
+
+      - name: Install wrangler
+        if: steps.gate.outputs.ready == 'true'
+        run: npm install --no-save wrangler@^4
+
+      # --branch=main is what Cloudflare treats as the production deployment.
+      # Anything else lands as a preview with its own URL.
+      - name: Deploy
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            TARGET=main
+            echo "Deploying to PRODUCTION"
+          else
+            TARGET="preview-${GITHUB_REF_NAME//[^a-zA-Z0-9-]/-}"
+            TARGET="${TARGET:0:28}"
+            echo "Deploying to PREVIEW branch '$TARGET'"
+          fi
+          npx wrangler pages deploy public \
+            --project-name="${{ vars.CF_PAGES_PROJECT }}" \
+            --branch="$TARGET" \
+            --commit-dirty=true
+
+      - name: Note
+        if: steps.gate.outputs.ready == 'true' && github.ref != 'refs/heads/main'
+        run: echo "::notice::Preview deployed. Production (ideas.planitnow.us) is unchanged."
