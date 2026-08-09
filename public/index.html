@@ -141,6 +141,65 @@
   .pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:20px;
     padding:3px 10px;font-size:11.5px;color:var(--muted);margin:0 6px 6px 0}
   .pill .dot{width:7px;height:7px;border-radius:50%}
+  /* project list */
+  .prow{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);
+    cursor:pointer;width:100%;background:none;border-left:none;border-right:none;border-top:none;
+    text-align:left;font-family:inherit;color:var(--ink)}
+  .prow:last-child{border-bottom:none}
+  .prow:hover{color:var(--accent)}
+  .pdot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+  .pname{flex:1;min-width:0;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pmeta{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);flex-shrink:0}
+  .pwarn{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.06em;color:var(--warn);
+    border:1px solid #E8912D66;border-radius:4px;padding:1px 5px;flex-shrink:0}
+
+  /* slide-over */
+  #scrim{position:fixed;inset:0;background:rgba(20,24,35,.34);z-index:60;display:none}
+  #scrim.on{display:block}
+  #drawer{position:fixed;top:0;right:0;bottom:0;width:min(680px,100%);background:var(--card);
+    border-left:1px solid var(--line);z-index:61;display:none;flex-direction:column;
+    box-shadow:-12px 0 40px rgba(20,24,35,.12)}
+  #drawer.on{display:flex}
+  .dhead{padding:18px 22px;border-bottom:1px solid var(--line);display:flex;gap:12px;align-items:flex-start}
+  .dtitle{font-family:'Space Grotesk',sans-serif;font-size:19px;font-weight:600;flex:1;min-width:0;line-height:1.3}
+  .dclose{font-size:22px;line-height:1;background:none;border:none;cursor:pointer;color:var(--muted);padding:0 4px}
+  .dclose:hover{color:var(--ink)}
+  .dbody{flex:1;overflow-y:auto;padding:18px 22px 40px}
+  .dsection{margin-top:22px}
+  .dlabel{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+  .statusrow{display:flex;gap:6px;flex-wrap:wrap}
+  .sbtn{font-family:'IBM Plex Mono',monospace;font-size:11px;padding:6px 12px;border-radius:20px;
+    cursor:pointer;border:1px solid var(--line);background:transparent;color:var(--muted)}
+  .sbtn.on{border-color:var(--ink);background:var(--ink);color:#fff}
+  .sbtn[disabled]{opacity:.5;cursor:default}
+  .actbtn{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.04em;padding:8px 14px;
+    border-radius:8px;cursor:pointer;border:1px solid var(--accent);background:var(--accent);color:#fff}
+  .actbtn.ghost{background:transparent;color:var(--accent)}
+  .actbtn[disabled]{opacity:.5;cursor:default}
+  .md{font-size:13.5px;line-height:1.62;color:var(--ink);overflow-wrap:anywhere}
+  .md h1,.md h2,.md h3{font-family:'Space Grotesk',sans-serif;margin:18px 0 6px;line-height:1.3}
+  .md h1{font-size:17px}.md h2{font-size:15px}.md h3{font-size:13.5px}
+  .md p{margin:0 0 10px}
+  .md ul,.md ol{margin:0 0 10px;padding-left:20px}
+  .md li{margin:3px 0}
+  .md code{font-family:'IBM Plex Mono',monospace;font-size:12px;background:#16181D0D;
+    padding:1px 5px;border-radius:4px}
+  .md pre{background:#16181D0A;border:1px solid var(--line);border-radius:8px;padding:10px 12px;
+    overflow-x:auto;margin:0 0 10px}
+  .md pre code{background:none;padding:0}
+  .md blockquote{border-left:3px solid var(--line);margin:0 0 10px;padding-left:12px;color:var(--muted)}
+  .md hr{border:none;border-top:1px solid var(--line);margin:14px 0}
+  .cmt{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+  .cmt.agent{border-color:#2B4BF244;background:#2B4BF208}
+  .cmthead{display:flex;justify-content:space-between;gap:10px;align-items:baseline;margin-bottom:8px}
+  .cmtwho{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.06em;color:var(--muted)}
+  .cmt.agent .cmtwho{color:var(--accent)}
+  .bodyedit{width:100%;font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.55;
+    border:1px solid var(--line);border-radius:8px;padding:12px;outline:none;resize:vertical;
+    min-height:320px;color:var(--ink);background:var(--card)}
+  .dmsg{font-family:'IBM Plex Mono',monospace;font-size:11.5px;margin-top:10px;min-height:16px}
+  .dmsg.ok{color:var(--ok)} .dmsg.err{color:var(--danger)}
   @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -203,6 +262,11 @@
       </div>
 
       <div class="panel">
+        <div class="ptitle">Projects <span class="pcount" id="pCount">0</span></div>
+        <div id="projects"></div>
+      </div>
+
+      <div class="panel">
         <div class="ptitle">Recent agent activity</div>
         <div id="activity"></div>
       </div>
@@ -225,6 +289,18 @@
       </div>
     </div>
   </div>
+</div>
+
+<div id="scrim"></div>
+<div id="drawer" role="dialog" aria-modal="true" aria-label="Project detail">
+  <div class="dhead">
+    <div style="flex:1;min-width:0">
+      <div class="dlabel" id="dNum"></div>
+      <div class="dtitle" id="dTitle">Loading…</div>
+    </div>
+    <button class="dclose" id="dClose" aria-label="Close">×</button>
+  </div>
+  <div class="dbody" id="dBody"></div>
 </div>
 
 <script>
@@ -377,10 +453,14 @@
     c.className = "pcount" + (list.length === 0 ? " zero" : "");
     $("waiting").innerHTML = list.length
       ? list.map(function (w) {
+          // PRs live in other repos, so they still link out; anything with an issue number
+          // opens in the panel instead of bouncing you to GitHub.
+          var name = w.number
+            ? '<a href="#" data-issue="' + w.number + '">' + esc(w.title) + '</a>'
+            : '<a href="' + esc(w.url) + '" target="_blank" rel="noreferrer">' + esc(w.title) + '</a>';
           return '<div class="item">' +
             '<span class="tagm t-' + esc(w.kind) + '">' + esc(w.kind) + '</span>' +
-            '<span class="iname"><a href="' + esc(w.url) + '" target="_blank" rel="noreferrer">' +
-              esc(w.title) + '</a><br><span style="color:var(--muted);font-size:12px">' +
+            '<span class="iname">' + name + '<br><span style="color:var(--muted);font-size:12px">' +
               esc(w.label) + '</span></span>' +
             '<span class="idays">' + (w.days == null ? "" : w.days + "d") + '</span></div>';
         }).join("")
@@ -396,7 +476,7 @@
     $("stalled").innerHTML = list.length
       ? list.map(function (s) {
           return '<div class="item"><span class="tagm t-charter">' + esc(s.status) + '</span>' +
-            '<span class="iname"><a href="' + esc(s.url) + '" target="_blank" rel="noreferrer">' +
+            '<span class="iname"><a href="#" data-issue="' + s.number + '">' +
               esc(s.title) + '</a>' +
             (s.repo ? ' <span style="color:var(--muted);font-size:11.5px">' + esc(s.repo) + '</span>' : "") +
             '</span><span class="idays">' + s.days + 'd</span></div>';
@@ -444,8 +524,10 @@
     $("activity").innerHTML = list.length
       ? list.map(function (a) {
           return '<div class="act-item"><div class="act-head">' +
-            '<a href="' + esc(a.url) + '" target="_blank" rel="noreferrer" style="font-size:13px;text-decoration:none">#' +
-              esc(a.issue == null ? "?" : a.issue) + '</a>' +
+            (a.issue == null
+              ? '<span style="font-size:13px">#?</span>'
+              : '<a href="#" data-issue="' + a.issue + '" style="font-size:13px;text-decoration:none">#' +
+                a.issue + '</a>') +
             '<span class="act-when">' + esc(ago(a.at)) + '</span></div>' +
             '<div class="act-body">' + esc(a.excerpt) + '</div></div>';
         }).join("")
@@ -462,17 +544,232 @@
       : '<div class="empty">No brief yet. The first one posts Monday at 07:00 CT.</div>';
   }
 
+  var SCOLOR = { background: "#9AA0A8", active: "#2B7FFF", hot: "#EE5A36", done: "#1FA971" };
+
+  function renderProjects() {
+    var list = (data && data.projects) || [];
+    var c = $("pCount");
+    c.textContent = list.length;
+    c.className = "pcount" + (list.length === 0 ? " zero" : "");
+    $("projects").innerHTML = list.length
+      ? list.map(function (p) {
+          var warn = (p.status === "active" || p.status === "hot") && !p.killCriteriaPresent
+            ? '<span class="pwarn">NO KILL CRITERIA</span>'
+            : (!p.charterPresent ? '<span class="pmeta">no charter</span>' : "");
+          return '<button class="prow" data-issue="' + p.number + '">' +
+            '<span class="pdot" style="background:' + (SCOLOR[p.status] || "#9AA0A8") + '"></span>' +
+            '<span class="pname">' + esc(p.title) + '</span>' +
+            warn +
+            '<span class="pmeta">#' + p.number + '</span></button>';
+        }).join("")
+      : '<div class="empty">No projects yet. Add one with the box above.</div>';
+  }
+
   function render() {
     if (!data) return;
     if (data.repo) $("repoLink").href = "https://github.com/" + data.repo + "/issues";
     renderHealth();
     renderWaiting();
     renderStalled();
+    renderProjects();
     renderPortfolio();
     renderSpend();
     renderActivity();
     renderBrief();
   }
+
+  // ── markdown ─────────────────────────────────────────────
+  // Deliberately small: enough for charters and agent comments, and it escapes first so
+  // issue text can never inject markup.
+  function md(src) {
+    var out = esc(src || "").replace(/\r\n/g, "\n");
+    var blocks = [];
+    out = out.replace(/```([\s\S]*?)```/g, function (_, code) {
+      blocks.push('<pre><code>' + code.replace(/^\n/, "") + '</code></pre>');
+      return " B" + (blocks.length - 1) + " ";
+    });
+    out = out.replace(/`([^`\n]+)`/g, "<code>$1</code>");
+    out = out.replace(/^###\s+(.*)$/gm, "<h3>$1</h3>")
+             .replace(/^##\s+(.*)$/gm, "<h2>$1</h2>")
+             .replace(/^#\s+(.*)$/gm, "<h1>$1</h1>");
+    out = out.replace(/^\s*---\s*$/gm, "<hr>");
+    // Force a blank line after block elements so the text beneath them becomes its own
+    // paragraph chunk. Without this, a heading and the prose under it merge into one chunk
+    // that gets emitted raw, losing both the <p> and its line breaks.
+    out = out.replace(/(<\/h[123]>|<hr>)\n(?!\n)/g, "$1\n\n");
+    out = out.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
+             .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+    out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
+                      '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+    out = out.replace(/^&gt;\s?(.*)$/gm, "<blockquote>$1</blockquote>");
+    // [ \t]* not \s* — with the m flag, \s* eats the blank line separating a list from the
+    // paragraph above it, which merges them into one chunk and nests <ul> inside <p>.
+    out = out.replace(/^[ \t]*[-*][ \t]+(.*)$/gm, "<li>$1</li>")
+             .replace(/^[ \t]*\d+\.[ \t]+(.*)$/gm, "<li>$1</li>");
+    out = out.replace(/(<li>[\s\S]*?<\/li>)(?!\s*<li>)/g, "<ul>$1</ul>");
+    out = out.split(/\n{2,}/).map(function (chunk) {
+      var t = chunk.trim();
+      if (!t) return "";
+      if (/^<(h\d|ul|ol|pre|blockquote|hr)/.test(t) || /^ B\d+ $/.test(t)) return t;
+      return "<p>" + t.replace(/\n/g, "<br>") + "</p>";
+    }).join("\n");
+    return out.replace(/ B(\d+) /g, function (_, i) { return blocks[+i]; });
+  }
+
+  // ── issue drawer ─────────────────────────────────────────
+  var current = null, templateCache = null;
+
+  function closeDrawer() {
+    $("drawer").classList.remove("on");
+    $("scrim").classList.remove("on");
+    current = null;
+  }
+  $("dClose").addEventListener("click", closeDrawer);
+  $("scrim").addEventListener("click", closeDrawer);
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && $("drawer").classList.contains("on")) closeDrawer();
+  });
+
+  function api(path, opts) {
+    opts = opts || {};
+    opts.headers = Object.assign({ "x-auth": pass }, opts.headers || {});
+    if (opts.body) opts.headers["content-type"] = "application/json";
+    return fetch(path, opts).then(function (r) {
+      if (r.status === 401) { lockOut("Passphrase rejected."); throw new Error("auth"); }
+      return r.json().then(function (b) {
+        if (!r.ok) throw new Error(b.detail || b.error || ("http " + r.status));
+        return b;
+      });
+    });
+  }
+
+  function openIssue(number) {
+    $("drawer").classList.add("on");
+    $("scrim").classList.add("on");
+    $("dNum").textContent = "#" + number;
+    $("dTitle").textContent = "Loading…";
+    $("dBody").innerHTML = '<div class="empty">Fetching from GitHub…</div>';
+
+    api("/api/issue?number=" + number)
+      .then(function (d) { current = d; renderDrawer(); })
+      .catch(function (e) {
+        if (e.message === "auth") return;
+        $("dBody").innerHTML = '<div class="dmsg err">Couldn\'t load: ' + esc(e.message) + '</div>';
+      });
+  }
+
+  function renderDrawer() {
+    var d = current;
+    if (!d) return;
+    $("dNum").textContent = "#" + d.number + " · " + d.status.toUpperCase();
+    $("dTitle").textContent = d.title;
+
+    var h = "";
+
+    h += '<div class="dsection"><div class="dlabel">Status</div><div class="statusrow">';
+    ["background", "active", "hot", "done"].forEach(function (s) {
+      h += '<button class="sbtn' + (d.status === s ? " on" : "") + '" data-setstatus="' + s + '">' +
+        s + '</button>';
+    });
+    h += '</div>';
+    if ((d.status === "active" || d.status === "hot") && !d.killCriteriaPresent) {
+      h += '<div class="dmsg err">No kill criteria in the charter — CLAUDE.md says this isn\'t ready to be active.</div>';
+    }
+    h += '</div>';
+
+    h += '<div class="dsection"><div class="dlabel">Actions</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+      (d.buildApproved
+        ? '<button class="actbtn ghost" disabled>/build already approved</button>'
+        : '<button class="actbtn" data-build="1">Approve /build</button>') +
+      '<button class="actbtn ghost" data-edit="1">' +
+        (d.charterPresent ? "Edit body" : "Start charter") + '</button>' +
+      '<a class="actbtn ghost" style="text-decoration:none" href="' + esc(d.url) +
+        '" target="_blank" rel="noreferrer">Open on GitHub ↗</a>' +
+      '</div><div class="dmsg" id="dMsg"></div></div>';
+
+    h += '<div class="dsection"><div class="dlabel">Body</div>' +
+      '<div class="md" id="dBodyMd">' + (d.body ? md(d.body) : '<p style="color:var(--muted)">Empty.</p>') +
+      '</div></div>';
+
+    h += '<div class="dsection"><div class="dlabel">Comments (' + d.comments.length + ')</div>';
+    h += d.comments.length
+      ? d.comments.map(function (c) {
+          return '<div class="cmt' + (c.isAgent ? " agent" : "") + '"><div class="cmthead">' +
+            '<span class="cmtwho">' + (c.isAgent ? "AGENT" : esc(c.author)) + '</span>' +
+            '<span class="cmtwho">' + esc(ago(c.at)) + '</span></div>' +
+            '<div class="md">' + md(c.body) + '</div></div>';
+        }).join("")
+      : '<div class="empty" style="padding:8px 0">No comments yet.</div>';
+    h += '</div>';
+
+    $("dBody").innerHTML = h;
+  }
+
+  function dMsg(text, cls) {
+    var el = $("dMsg");
+    if (el) { el.textContent = text; el.className = "dmsg " + (cls || ""); }
+  }
+
+  function act(payload, okText) {
+    dMsg("Working…", "");
+    return api("/api/issue", { method: "POST", body: JSON.stringify(payload) })
+      .then(function () {
+        dMsg(okText, "ok");
+        return api("/api/issue?number=" + payload.number);
+      })
+      .then(function (d) { current = d; renderDrawer(); dMsg(okText, "ok"); pull(true); })
+      .catch(function (e) { if (e.message !== "auth") dMsg("Failed: " + e.message, "err"); });
+  }
+
+  function showEditor() {
+    var d = current;
+    var seed = d.body && d.body.trim() ? Promise.resolve(d.body) : loadTemplate();
+    seed.then(function (text) {
+      var start = d.body && d.body.trim()
+        ? text
+        : "Repo: none\n\n" + text;
+      $("dBody").innerHTML =
+        '<div class="dsection"><div class="dlabel">Edit body — first line must be ' +
+        '<code>Repo: owner/name</code> or <code>Repo: none</code></div>' +
+        '<textarea class="bodyedit" id="bodyIn"></textarea>' +
+        '<div style="display:flex;gap:8px;margin-top:10px">' +
+        '<button class="actbtn" data-save="1">Save</button>' +
+        '<button class="actbtn ghost" data-canceledit="1">Cancel</button>' +
+        '</div><div class="dmsg" id="dMsg"></div></div>';
+      $("bodyIn").value = start;
+    });
+  }
+
+  function loadTemplate() {
+    if (templateCache) return Promise.resolve(templateCache);
+    return api("/api/issue?template=1")
+      .then(function (r) { templateCache = r.template; return templateCache; })
+      .catch(function () { return "## What it is\n\n## Kill criteria\n\n"; });
+  }
+
+  $("dBody").addEventListener("click", function (e) {
+    var el = e.target.closest("[data-setstatus],[data-build],[data-edit],[data-save],[data-canceledit]");
+    if (!el || !current) return;
+    var ds = el.dataset;
+    if (ds.setstatus !== undefined) {
+      if (ds.setstatus === current.status) return;
+      act({ number: current.number, action: "status", status: ds.setstatus }, "Status → " + ds.setstatus);
+    } else if (ds.build !== undefined) {
+      act({ number: current.number, action: "build" }, "/build posted");
+    } else if (ds.edit !== undefined) {
+      showEditor();
+    } else if (ds.canceledit !== undefined) {
+      renderDrawer();
+    } else if (ds.save !== undefined) {
+      act({ number: current.number, action: "body", body: $("bodyIn").value }, "Saved");
+    }
+  });
+
+  document.addEventListener("click", function (e) {
+    var row = e.target.closest("[data-issue]");
+    if (row) { e.preventDefault(); openIssue(Number(row.dataset.issue)); }
+  });
 
   // ── quick capture — the one write ────────────────────────
   function capMsg(text, isErr) {
