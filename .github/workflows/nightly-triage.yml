@@ -15,12 +15,13 @@ on:
     - cron: "0 7 * * *"
   workflow_dispatch:
     inputs:
-      simulate_failure:
-        description: "Force a failure to test the alerting path"
+      # GitHub renders the description, not the input name, so each one names itself.
+      dry_run:
+        description: "dry_run — run the agent, print what it would post, post nothing (safe test)"
         type: boolean
         default: false
-      dry_run:
-        description: "Run the agent but do not post comments"
+      simulate_failure:
+        description: "simulate_failure — deliberately fail, to check the alert fires (leaves an issue)"
         type: boolean
         default: false
 

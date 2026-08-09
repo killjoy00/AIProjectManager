@@ -9,12 +9,13 @@ on:
     - cron: "0 12 * * 1"
   workflow_dispatch:
     inputs:
-      simulate_failure:
-        description: "Force a failure to test the alerting path"
+      # GitHub renders the description, not the input name, so each one names itself.
+      dry_run:
+        description: "dry_run — render the brief to the log, post nothing (safe test)"
         type: boolean
         default: false
-      dry_run:
-        description: "Render the brief to the log without posting it"
+      simulate_failure:
+        description: "simulate_failure — deliberately fail, to check the alert fires (leaves an issue)"
         type: boolean
         default: false
 
