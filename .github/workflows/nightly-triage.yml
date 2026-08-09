@@ -67,14 +67,39 @@ jobs:
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code
 
+      # Copying a token out of a terminal often brings a line wrap with it, and the credential
+      # then arrives containing a newline. That produces a baffling
+      # `Header 'Authorization' has invalid value` and nothing else. Credentials never contain
+      # whitespace, so stripping it is safe and turns a dead run into a working one.
+      - name: Normalize agent credential
+        env:
+          RAW_OAUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          RAW_APIKEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          normalize () {  # $1 = secret name, $2 = raw value
+            raw="$2"
+            [ -z "$raw" ] && return 0
+            clean=$(printf '%s' "$raw" | tr -d '[:space:]')
+            # Re-mask the cleaned form; the original mask does not cover it.
+            echo "::add-mask::$clean"
+            echo "$1=$clean" >> "$GITHUB_ENV"
+            if [ "${#clean}" -ne "${#raw}" ]; then
+              echo "::warning::$1 contained whitespace (likely a line wrap when it was copied)." \
+                   "Using the stripped value. Consider re-pasting it as one unbroken line."
+            fi
+          }
+          normalize CLAUDE_CODE_OAUTH_TOKEN "$RAW_OAUTH"
+          normalize ANTHROPIC_API_KEY       "$RAW_APIKEY"
+          if [ -z "$RAW_OAUTH" ] && [ -z "$RAW_APIKEY" ]; then
+            echo "::error::No agent credential set. Add CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY."
+            exit 1
+          fi
+
       # No Bash, no gh, no credentials in the environment. The model can read the repo and write
       # its output file — nothing else.
+      # No `env:` here on purpose: the credentials come from the normalize step via GITHUB_ENV.
+      # A step-level `env:` would override those with the raw, possibly newline-bearing values.
       - name: Run triage agent
-        env:
-          # Either credential works. Subscription token is preferred; an API key is the
-          # browser-only fallback for setups without a terminal.
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           # pipefail: without it the pipeline reports tee's status, so a failing `claude`
           # would surface later as the confusing "agent did not write triage.json".
