@@ -99,6 +99,33 @@ Leave `APP_PASSPHRASE` and the `IDEAS_KV` binding exactly as they are — both a
 > new deployment (push, or re-run the deploy workflow) or the Function will return
 > `gh_token_not_bound`.
 
+> **Production and Preview are separate environments.** Variables and bindings set on Production
+> do *not* apply to preview deployments. A preview with none of them set returns 401 from
+> `/api/dashboard` (unset `APP_PASSPHRASE` fails the check the same way a wrong one does) and
+> 500 `kv_not_bound` from `/api/ideas`. To exercise the API on a preview URL before merging,
+> add the same four variables **and** the `IDEAS_KV` binding to the Preview environment too.
+
+### The project is named `ideatracker`, not `ideas`
+
+`ideas.planitnow.us` is a custom domain attached to a Pages project called **`ideatracker`**.
+Deploying to `ideas` fails with `The Pages project "ideas" does not exist`.
+
+`deploy.yml` no longer depends on anyone remembering this: it asks Cloudflare which project
+serves `CF_PAGES_DOMAIN` (default `ideas.planitnow.us`) and deploys to that. `CF_PAGES_PROJECT`
+is honoured only when it names a project that actually exists, so it still works as an override.
+
+### ⚠️ Two things deploy to this Pages project
+
+The `ideatracker` project is **Git-connected** (the setup notes said Direct Upload — they were
+wrong). So it has two deploy sources:
+
+1. its connected Git repo, which deploys on push, and
+2. this repo's `deploy.yml`, via `wrangler pages deploy`.
+
+Whichever ran last wins. **A push to the connected repo will overwrite the dashboard.** Pick one
+source before relying on production: disconnect the Git integration, move the dashboard into the
+connected repo, or stand up a separate Pages project on its own subdomain.
+
 ---
 
 ## 2. Deploy model
