@@ -64,6 +64,8 @@ jobs:
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
+          # pipefail: without it the pipeline reports tee's status, masking a failing `claude`.
+          set -o pipefail
           claude -p "$(cat docs/prompts/monday-brief.md)" \
             --allowedTools "Read,Write,Edit,Glob,Grep,WebSearch,WebFetch" \
             --permission-mode acceptEdits \
@@ -114,7 +116,9 @@ jobs:
           name: brief-${{ github.run_id }}
           path: .agent/
           retention-days: 30
-          if-no-files-found: ignore
+          if-no-files-found: warn
+          # .agent is dot-prefixed — hidden files are excluded by default.
+          include-hidden-files: true
 
       - name: Report failure
         if: failure()

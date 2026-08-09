@@ -72,6 +72,9 @@ jobs:
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
+          # pipefail: without it the pipeline reports tee's status, so a failing `claude`
+          # would surface later as the confusing "agent did not write triage.json".
+          set -o pipefail
           claude -p "$(cat docs/prompts/nightly-triage.md)" \
             --allowedTools "Read,Write,Edit,Glob,Grep,WebSearch,WebFetch" \
             --permission-mode acceptEdits \
@@ -113,7 +116,10 @@ jobs:
           name: triage-${{ github.run_id }}
           path: .agent/
           retention-days: 14
-          if-no-files-found: ignore
+          if-no-files-found: warn
+          # .agent is dot-prefixed, so without this the upload silently finds nothing and the
+          # debugging artifacts the runbook points at would always be empty.
+          include-hidden-files: true
 
       # Silence is never ambiguous: any failure above leaves a blocked:human issue behind.
       - name: Report failure
