@@ -9,12 +9,13 @@ on:
     - cron: "0 12 * * 1"
   workflow_dispatch:
     inputs:
-      simulate_failure:
-        description: "Force a failure to test the alerting path"
+      # GitHub renders the description, not the input name, so each one names itself.
+      dry_run:
+        description: "dry_run — render the brief to the log, post nothing (safe test)"
         type: boolean
         default: false
-      dry_run:
-        description: "Render the brief to the log without posting it"
+      simulate_failure:
+        description: "simulate_failure — deliberately fail, to check the alert fires (leaves an issue)"
         type: boolean
         default: false
 
@@ -60,11 +61,32 @@ jobs:
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code
 
-      - name: Run brief agent
+      # See the note in nightly-triage.yml — a copied-out token often carries a line wrap.
+      - name: Normalize agent credential
         env:
-          # Either credential works — see nightly-triage.yml.
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          RAW_OAUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          RAW_APIKEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          normalize () {
+            raw="$2"
+            [ -z "$raw" ] && return 0
+            clean=$(printf '%s' "$raw" | tr -d '[:space:]')
+            echo "::add-mask::$clean"
+            echo "$1=$clean" >> "$GITHUB_ENV"
+            if [ "${#clean}" -ne "${#raw}" ]; then
+              echo "::warning::$1 contained whitespace (likely a line wrap when it was copied)." \
+                   "Using the stripped value. Consider re-pasting it as one unbroken line."
+            fi
+          }
+          normalize CLAUDE_CODE_OAUTH_TOKEN "$RAW_OAUTH"
+          normalize ANTHROPIC_API_KEY       "$RAW_APIKEY"
+          if [ -z "$RAW_OAUTH" ] && [ -z "$RAW_APIKEY" ]; then
+            echo "::error::No agent credential set. Add CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY."
+            exit 1
+          fi
+
+      # No `env:` here on purpose — credentials arrive from the normalize step via GITHUB_ENV.
+      - name: Run brief agent
         run: |
           # pipefail: without it the pipeline reports tee's status, masking a failing `claude`.
           set -o pipefail
