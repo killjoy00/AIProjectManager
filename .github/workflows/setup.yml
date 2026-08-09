@@ -1,0 +1,86 @@
+name: setup
+
+# One-time (and safely repeatable) setup tasks, run from the Actions tab.
+#
+# These used to be documented as local commands, but the owner has no local terminal — so they
+# run here instead. Actions → setup → Run workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "What to run"
+        type: choice
+        default: labels
+        options:
+          - labels
+          - check-config
+
+concurrency:
+  group: setup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_OWNER: ${{ github.repository_owner }}
+      GH_REPO: ${{ github.event.repository.name }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Create labels
+        if: inputs.task == 'labels'
+        run: node scripts/setup-labels.mjs
+
+      # Reports which secrets/variables are present without ever printing their values —
+      # the fastest way to find a typo'd secret name.
+      - name: Check configuration
+        if: inputs.task == 'check-config'
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          GH_API_TOKEN: ${{ secrets.GH_API_TOKEN }}
+          CLAUDE_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ANTHROPIC_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          HB_SECRET: ${{ secrets.HEARTBEAT_SECRET }}
+          CF_PROJECT: ${{ vars.CF_PAGES_PROJECT }}
+          HB_URL: ${{ vars.HEARTBEAT_URL }}
+        run: |
+          ok=0; bad=0
+          check () {
+            if [ -n "$2" ]; then
+              echo "  ✅ $1 (${#2} chars)"; ok=$((ok+1))
+            else
+              echo "  ❌ $1 — NOT SET"; bad=$((bad+1))
+            fi
+          }
+          echo "Secrets:"
+          check CLOUDFLARE_API_TOKEN     "$CF_TOKEN"
+          check CLOUDFLARE_ACCOUNT_ID    "$CF_ACCOUNT"
+          check GH_API_TOKEN             "$GH_API_TOKEN"
+          check HEARTBEAT_SECRET         "$HB_SECRET"
+          echo "Agent credential (one of these is required):"
+          check CLAUDE_CODE_OAUTH_TOKEN  "$CLAUDE_TOKEN"
+          check ANTHROPIC_API_KEY        "$ANTHROPIC_KEY"
+          echo "Variables:"
+          check CF_PAGES_PROJECT         "$CF_PROJECT"
+          check HEARTBEAT_URL            "$HB_URL"
+          echo ""
+          if [ -z "$CLAUDE_TOKEN" ] && [ -z "$ANTHROPIC_KEY" ]; then
+            echo "::error::No agent credential set — the nightly and brief workflows cannot run."
+            exit 1
+          fi
+          echo "$ok present, $bad missing."
+          [ "$bad" -gt 0 ] && echo "::warning::$bad item(s) missing — see above."
+          exit 0

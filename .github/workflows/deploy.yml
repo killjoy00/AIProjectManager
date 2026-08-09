@@ -1,0 +1,156 @@
+name: deploy
+
+# Push to main -> production (ideas.planitnow.us).
+# Push to any other branch -> a preview URL, production untouched.
+#
+# The existing Pages project is a Direct Upload project, which cannot be converted to
+# Git-connected. `wrangler pages deploy` works against it either way and compiles the
+# functions/ directory (the dashboard drag-and-drop upload cannot). No DNS is involved.
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "public/**"
+      - "functions/**"
+      - ".github/workflows/deploy.yml"
+      - "package.json"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # Deploying without the Cloudflare secrets would fail confusingly. Skip loudly instead.
+      - name: Check deploy secrets
+        id: gate
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CF_PROJECT: ${{ vars.CF_PAGES_PROJECT }}
+        run: |
+          missing=""
+          [ -z "$CF_TOKEN" ]   && missing="$missing CLOUDFLARE_API_TOKEN"
+          [ -z "$CF_ACCOUNT" ] && missing="$missing CLOUDFLARE_ACCOUNT_ID"
+          if [ -n "$missing" ]; then
+            echo "::warning::Deploy skipped — not configured yet:$missing"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.gate.outputs.ready == 'true'
+        with:
+          node-version: "22"
+
+      - name: Install wrangler
+        if: steps.gate.outputs.ready == 'true'
+        run: npm install --no-save wrangler@^4
+
+      # Resolve the Pages project from the domain it serves rather than a hand-typed name.
+      # The first deploy failed purely because CF_PAGES_PROJECT was set to "ideas" while the
+      # project is actually called "ideatracker" — a name nobody could have guessed, since
+      # ideas.planitnow.us is a custom domain attached to it. Asking Cloudflare which project
+      # owns the domain removes that whole class of setup error.
+      - name: Resolve Pages project
+        id: project
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WANT_DOMAIN: ${{ vars.CF_PAGES_DOMAIN || 'ideas.planitnow.us' }}
+          WANT_PROJECT: ${{ vars.CF_PAGES_PROJECT }}
+        run: |
+          set -o pipefail
+          resolved=$(curl -sS -H "Authorization: Bearer $CF_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/pages/projects" \
+            | node -e "
+              let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{
+                const want=process.env.WANT_DOMAIN, named=process.env.WANT_PROJECT;
+                let j; try{ j=JSON.parse(s); }catch{ console.error('unparseable API response'); process.exit(1); }
+                if(!j.success){ console.error('Cloudflare API error: '+JSON.stringify(j.errors)); process.exit(1); }
+                const ps=j.result||[];
+                if(!ps.length){ console.error('No Pages projects in this account.'); process.exit(1); }
+                // A project name that actually exists always wins — explicit override.
+                if(named && ps.some(p=>p.name===named)){ console.log(named); process.exit(0); }
+                const hit=ps.find(p=>(p.domains||[]).includes(want));
+                if(hit){
+                  if(named) console.error('NOTE: CF_PAGES_PROJECT=\"'+named+'\" does not exist; using \"'+hit.name+'\", which serves '+want+'.');
+                  console.log(hit.name); process.exit(0);
+                }
+                console.error('No project serves '+want+'. Projects: '+ps.map(p=>p.name+' ['+(p.domains||[]).join(', ')+']').join(' | '));
+                process.exit(1);
+              });")
+          echo "Deploying to Pages project: $resolved"
+          echo "name=$resolved" >> "$GITHUB_OUTPUT"
+
+      # --branch=main is what Cloudflare treats as the production deployment.
+      # Anything else lands as a preview with its own URL.
+      - name: Deploy
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            TARGET=main
+            echo "Deploying to PRODUCTION"
+          else
+            TARGET="preview-${GITHUB_REF_NAME//[^a-zA-Z0-9-]/-}"
+            TARGET="${TARGET:0:28}"
+            echo "Deploying to PREVIEW branch '$TARGET'"
+          fi
+          npx wrangler pages deploy public \
+            --project-name="${{ steps.project.outputs.name }}" \
+            --branch="$TARGET" \
+            --commit-dirty=true
+
+      - name: Note
+        if: steps.gate.outputs.ready == 'true' && github.ref != 'refs/heads/main'
+        run: echo "::notice::Preview deployed. Production (ideas.planitnow.us) is unchanged."
+
+      # A failed deploy is almost always the wrong project name, or a Worker being targeted as
+      # if it were Pages. Print what actually exists in the account so the next attempt is
+      # informed rather than another guess.
+      - name: Diagnose deploy failure
+        if: failure() && steps.gate.outputs.ready == 'true'
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          echo "CF_PAGES_PROJECT variable: '${{ vars.CF_PAGES_PROJECT }}'"
+          echo "Resolved project:          '${{ steps.project.outputs.name }}'"
+          echo ""
+          echo "=== Pages projects in this account ==="
+          npx wrangler pages project list 2>&1 \
+            || echo "(none, or the API token lacks Cloudflare Pages permission)"
+          echo ""
+          echo "=== Workers in this account ==="
+          # No first-class 'worker list' command, so ask the REST API directly.
+          curl -sS \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts" \
+            | node -e "
+              let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{
+                try{
+                  const j=JSON.parse(s);
+                  if(!j.success){console.log('API said:', JSON.stringify(j.errors));return;}
+                  if(!j.result||!j.result.length){console.log('(no Workers)');return;}
+                  for(const w of j.result) console.log(' -', w.id);
+                }catch(e){console.log('(could not parse response)');}
+              });"
+          echo ""
+          echo "If a Worker is listed above and no Pages project matches, this is a Worker"
+          echo "deployment — deploy.yml and the functions/ layout both need reworking."
