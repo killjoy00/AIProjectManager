@@ -28,8 +28,12 @@ working. Nothing deletes it.
 | Thing | Where | Notes |
 |---|---|---|
 | Make repo public | Settings → General → Danger Zone → Change visibility | Gives unlimited Actions minutes |
-| Labels | `GITHUB_TOKEN=<pat> npm run labels` | Idempotent, safe to re-run |
+| Default branch | Settings → General → Default branch → `main` | **Scheduled workflows only run on the default branch.** If this points at a feature branch, agents run from unreviewed code. |
+| Labels | Actions → **setup** → Run workflow → `labels` | Idempotent, safe to re-run |
 | Fine-grained PAT | Settings → Developer settings → Personal access tokens → Fine-grained | See scopes below |
+
+> **No local terminal needed for any of this.** The `setup` workflow runs the label creation from
+> the Actions tab. For the Claude token, see "Getting the Claude token without a terminal" below.
 
 **PAT scopes** — all 8 repos; `Contents: Read`, `Metadata: Read`, `Issues: Read and write`.
 Nothing else. It cannot push code and cannot touch Cloudflare or DNS.
@@ -49,8 +53,26 @@ Nothing else. It cannot push code and cannot touch Cloudflare or DNS.
 | `CLOUDFLARE_API_TOKEN` | from above |
 | `CLOUDFLARE_ACCOUNT_ID` | from above |
 | `GH_API_TOKEN` | the fine-grained PAT |
-| `CLAUDE_CODE_OAUTH_TOKEN` | run `claude setup-token` locally |
+| `CLAUDE_CODE_OAUTH_TOKEN` | see below — no local terminal required |
 | `HEARTBEAT_SECRET` | any long random string — generate with `openssl rand -hex 32` |
+
+### Getting the Claude token without a terminal
+
+`claude setup-token` needs a shell, but it doesn't have to be your machine. Use a Codespace:
+
+1. Repo → green **`< > Code`** → **Codespaces** → **Create codespace on main**
+2. In its terminal: `npm install -g @anthropic-ai/claude-code`
+3. `claude setup-token` — open the URL it prints, approve, paste the code back
+4. Copy the `sk-ant-oat…` value straight into the repo secret. Never paste it anywhere else.
+5. Delete the codespace at https://github.com/codespaces
+
+**These tokens expire.** When the nightly job starts failing with an auth error, repeat this —
+it's the single most likely cause of a dead machine, and `report-failure.mjs` names it first.
+
+**Alternative: an API key.** https://console.anthropic.com → API keys → Create key, stored as
+`ANTHROPIC_API_KEY` instead. Entirely browser-based, but metered per token rather than drawn
+from a subscription. If you switch, set a monthly cap in the console and restore the ceiling
+language in `docs/WEEKLY-BRIEF.md` §5 (see §7 below). Both workflows accept either credential.
 
 ### Repository variables — same page, **Variables** tab
 

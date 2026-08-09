@@ -70,7 +70,10 @@ jobs:
       # its output file — nothing else.
       - name: Run triage agent
         env:
+          # Either credential works. Subscription token is preferred; an API key is the
+          # browser-only fallback for setups without a terminal.
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           # pipefail: without it the pipeline reports tee's status, so a failing `claude`
           # would surface later as the confusing "agent did not write triage.json".

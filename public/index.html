@@ -357,9 +357,15 @@
       '<span class="hdot"></span><div style="flex:1;min-width:0">' +
       '<div class="htitle">' + esc(titles[h.state] || "Unknown") + '</div>' +
       '<div class="hmsg">' + esc(h.message || "") + '</div>' +
-      (meta.length ? '<div class="hmeta">' + meta.map(esc).join("</div><div class=\"hmeta\">") + '</div>' : "") +
-      (h.lastNightlyRun && h.lastNightlyRun.url
-        ? '<div class="hmeta"><a href="' + esc(h.lastNightlyRun.url) + '" target="_blank" rel="noreferrer">last run log ↗</a></div>'
+      // .hmeta is a flex row with gaps — the items belong inside one, as spans. Closing and
+      // reopening the div per item stacked them into separate rows instead.
+      (meta.length || (h.lastNightlyRun && h.lastNightlyRun.url)
+        ? '<div class="hmeta">' +
+          meta.map(function (m) { return "<span>" + esc(m) + "</span>"; }).join("") +
+          (h.lastNightlyRun && h.lastNightlyRun.url
+            ? '<span><a href="' + esc(h.lastNightlyRun.url) + '" target="_blank" rel="noreferrer">last run log ↗</a></span>'
+            : "") +
+          '</div>'
         : "") +
       '</div>';
   }

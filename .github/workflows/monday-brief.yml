@@ -62,7 +62,9 @@ jobs:
 
       - name: Run brief agent
         env:
+          # Either credential works — see nightly-triage.yml.
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           # pipefail: without it the pipeline reports tee's status, masking a failing `claude`.
           set -o pipefail
