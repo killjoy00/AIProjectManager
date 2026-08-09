@@ -83,3 +83,37 @@ jobs:
       - name: Note
         if: steps.gate.outputs.ready == 'true' && github.ref != 'refs/heads/main'
         run: echo "::notice::Preview deployed. Production (ideas.planitnow.us) is unchanged."
+
+      # A failed deploy is almost always the wrong project name, or a Worker being targeted as
+      # if it were Pages. Print what actually exists in the account so the next attempt is
+      # informed rather than another guess.
+      - name: Diagnose deploy failure
+        if: failure() && steps.gate.outputs.ready == 'true'
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          echo "CF_PAGES_PROJECT is currently set to: '${{ vars.CF_PAGES_PROJECT }}'"
+          echo ""
+          echo "=== Pages projects in this account ==="
+          npx wrangler pages project list 2>&1 \
+            || echo "(none, or the API token lacks Cloudflare Pages permission)"
+          echo ""
+          echo "=== Workers in this account ==="
+          # No first-class 'worker list' command, so ask the REST API directly.
+          curl -sS \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts" \
+            | node -e "
+              let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{
+                try{
+                  const j=JSON.parse(s);
+                  if(!j.success){console.log('API said:', JSON.stringify(j.errors));return;}
+                  if(!j.result||!j.result.length){console.log('(no Workers)');return;}
+                  for(const w of j.result) console.log(' -', w.id);
+                }catch(e){console.log('(could not parse response)');}
+              });"
+          echo ""
+          echo "If a Worker is listed above and no Pages project matches, this is a Worker"
+          echo "deployment — deploy.yml and the functions/ layout both need reworking."
