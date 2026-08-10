@@ -205,6 +205,12 @@ secret swap rather than a rewrite.
 A project with no kill criteria is not ready to leave `background`. The dashboard flags this
 under "Waiting on you," and the nightly agent calls it out.
 
+**If the code was built in a different Claude session,** use
+[`docs/CHARTER-HANDOFF.md`](CHARTER-HANDOFF.md) — a prompt to hand that session so it writes the
+charter from the actual code and returns it in the right shape. A charter written from reading
+the source beats one written from reading a deployed page; issue #6's scoring section is flagged
+as unverified precisely because it was done the weaker way.
+
 **Cap: 10 issues may hold `active` or `hot`.** Go over and `portfolio-check.mjs` files a
 `blocked:human` issue listing your coldest projects. It doesn't block the run — it just makes it
 impossible to miss.
