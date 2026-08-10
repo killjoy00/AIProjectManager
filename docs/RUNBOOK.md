@@ -180,6 +180,34 @@ impossible to miss.
 
 ---
 
+## 4b. How the agent sees project code
+
+Each night, after collecting context, `scripts/fetch-project-repos.mjs` shallow-clones the repo
+named in the `Repo:` line of every `active`/`hot` issue into `.projects/<name>/`. The agent reads
+those with Glob/Grep/Read.
+
+This matters: without it the agent gets only metadata (last push, open PR count) and has to guess
+at code it cannot see — the exact failure mode `CLAUDE.md` calls confident, plausible garbage.
+The prompt requires it to cite a file path for any factual claim about a codebase, and to say
+plainly when source is missing rather than guess.
+
+Access comes from `GH_API_TOKEN`, the fine-grained PAT, which already covers all 8 repos with
+`Contents: Read`. **If you add a project in a repo the PAT does not cover, update the PAT's
+repository list** or the clone fails — the run continues, and `.projects/INDEX.json` records why.
+
+Guardrails: only repos owned by `GH_OWNER` are ever cloned, at most 12 per run, shallow and
+single-branch, with `.git` deleted afterwards so no token survives in the checkout. The agent has
+no shell and no credentials, so it can never fetch anything itself — this step decides what it is
+allowed to see.
+
+### Giving a Claude Code session access to a project repo
+
+Separate from the agent. An interactive session (like the one that set this up) reaches GitHub
+through the Claude GitHub App, which is installed per-repository. If a session says
+*"you don't have access to killjoy00/<repo>"*, grant it at
+**https://github.com/settings/installations** → the Claude app → **Repository access** → add the
+repo. This is unrelated to `GH_API_TOKEN` and does not affect the nightly agent.
+
 ## 5. Security model
 
 The agents hold **no write credentials**. Each run is three stages:

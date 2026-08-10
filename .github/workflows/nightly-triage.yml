@@ -64,6 +64,14 @@ jobs:
       - name: Enforce portfolio cap
         run: node scripts/portfolio-check.mjs
 
+      # Give the agent the actual source of each active project. Metadata alone (last push, PR
+      # count) is not enough to reason about code, and an agent guessing at a codebase it cannot
+      # see produces exactly the confident, plausible garbage CLAUDE.md warns about.
+      - name: Fetch project repos
+        env:
+          GH_API_TOKEN: ${{ secrets.GH_API_TOKEN }}
+        run: node scripts/fetch-project-repos.mjs
+
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code
 

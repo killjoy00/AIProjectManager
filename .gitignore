@@ -11,6 +11,9 @@ dist/
 .agent/
 *.agent.json
 
+# shallow clones of project repos, fetched per run so the agent can read their source
+.projects/
+
 # secrets — nothing in this repo should ever hold one
 .env
 .env.*
