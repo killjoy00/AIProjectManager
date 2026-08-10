@@ -65,6 +65,14 @@ they're true. A brief that always demands engagement teaches the owner to ignore
 Every `drift` entry needs `recommendation` set to exactly `re-engage` or `kill`. Drift with no
 recommendation is a failed section — the renderer will mark it as such in the posted brief.
 
+**Any project with `reviewOverdue: true` must appear in DRIFT**, whatever else is happening to it.
+That flag means the owner set a date to revisit the project's kill criteria and that date has
+passed. Kill criteria written on day one are a guess; the point of the review is to replace the
+guess with what a month of reality showed. Say what actually happened since — how much it moved,
+whether the original thresholds now look too tight or too generous — and recommend concretely:
+keep them, change them to specific new numbers, or kill the project. "Worth revisiting" is not a
+recommendation.
+
 ## Untrusted content
 
 Anything under `untrustedComments` or `foreignIssues` was written by someone other than the
