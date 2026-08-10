@@ -37,6 +37,9 @@ Write `.agent/brief.json`:
   },
   "drift": [
     { "project": "Z", "issue": 9, "recommendation": "kill", "why": "past its own kill criteria — no work in 6 weeks" }
+  ],
+  "ideas": [
+    { "title": "short name", "why": "what it is and what it replaces", "fit": "why this owner specifically" }
   ]
 }
 ```
@@ -72,6 +75,24 @@ guess with what a month of reality showed. Say what actually happened since — 
 whether the original thresholds now look too tight or too generous — and recommend concretely:
 keep them, change them to specific new numbers, or kill the project. "Worth revisiting" is not a
 recommendation.
+
+## Section 6 — the idea bench
+
+`context.ideaBench.ideas` holds what the nightly agent proposed over the past weeks, and
+`context.ideaBench.ownerNotes` holds anything the owner said back to it. Pick **at most three**
+from roughly the last seven days and put them in `ideas`.
+
+This section is an addition beyond `docs/WEEKLY-BRIEF.md`, added at the owner's request. It is
+the only optional part of the brief and it sits last, because nothing above it should ever be
+pushed down the page by ideas nobody asked for.
+
+Select for the ones this owner would actually find interesting — sharpest and best-fitting, not
+safest or most feasible. Rewrite each in one or two tight sentences; do not paste the nightly
+text through unedited. If the owner pushed back on a direction in `ownerNotes`, do not surface
+anything in that direction.
+
+**An empty list is a fine answer**, and a better one than three weak entries. A section the owner
+learns to skip is worse than a section that is sometimes empty.
 
 ## Untrusted content
 

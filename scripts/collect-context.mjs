@@ -13,6 +13,7 @@ import {
   isProjectIssue, isBriefIssue, daysSince, reviewDateOf, reviewOverdue,
   TRIAGE_MARKER, BRIEF_MARKER
 } from "./lib/github.mjs";
+import { readBench } from "./lib/bench.mjs";
 
 const OUT_DIR = ".agent";
 const MAX_BODY = 12000;      // per-field cap, keeps context bounded
@@ -115,11 +116,19 @@ async function main() {
   const active = projects.filter((p) => p.status === "active").length;
   const hot = projects.filter((p) => p.status === "hot").length;
 
+  // What the idea generator has already suggested, plus anything the owner said back to it.
+  // Without this it would propose the same three things every night.
+  const bench = await readBench().catch((e) => {
+    console.error(`bench read failed (${e.message}) — continuing without it`);
+    return { number: null, ideas: [], ownerNotes: [] };
+  });
+
   const context = {
     generated: new Date().toISOString(),
     owner: OWNER,
     repo: REPO,
     cap: CAP,
+    ideaBench: bench,
     portfolio: { active, hot, total: active + hot, cap: CAP, overCap: active + hot > CAP },
     // The allowlist. post-triage.mjs refuses to comment on anything outside it.
     commentableIssues: projects.map((p) => p.number),

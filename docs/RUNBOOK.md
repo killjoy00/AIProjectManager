@@ -149,8 +149,30 @@ drag-and-drop uploader cannot do this — that's the gotcha that cost time befor
 |---|---|---|
 | 02:17 CT daily | Nightly triage — one unit of work per `active`/`hot` project | issue comments |
 | 05:33 CT daily | Second attempt — no-ops if the 02:17 run already succeeded | — |
-| Mon 07:00 CT | Weekly brief | new issue labeled `brief` |
+| Mon 07:23 CT | Weekly brief | new issue labeled `brief` |
 | Any time | Quick capture | dashboard → new `background` issue |
+
+## 3b. The idea bench
+
+The nightly agent also proposes **0–3 new project ideas** per run. They go to a single rolling
+issue titled **💡 Idea bench**, never to a project issue and never as new issues of their own —
+an idea nobody asked for should not cost a triage decision. It carries the `system` label, so it
+is excluded from the project list and never counts against the active/hot cap.
+
+The Monday brief harvests the week's best and surfaces **at most three** in a new section 6. So
+generation is nightly and cheap; publication is weekly and restrained.
+
+Both the nightly and weekly prompts are told that **zero ideas is a valid answer** — filler there
+teaches you to skip the section, and then a good idea gets skipped too.
+
+**Steering it:** the agent reads the bench issue, including your comments on it, before
+suggesting anything. Reply there to kill a direction and it will drop it rather than rephrase.
+**Turning it off:** close the bench issue. Nothing recreates it unless the agent has ideas to
+post, and it will simply reopen a fresh one — so if you want it off for good, say so in
+`docs/prompts/nightly-triage.md` instead.
+
+Section 6 is an addition beyond `docs/WEEKLY-BRIEF.md`, which is kept verbatim to spec. It sits
+last deliberately: nothing above it should be pushed down the page by ideas nobody asked for.
 
 Schedules are anchored to CDT (UTC-5). November–March they fire an hour earlier. Deliberately
 not corrected for — nothing in this system is time-sensitive.

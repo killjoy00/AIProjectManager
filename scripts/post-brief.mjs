@@ -12,6 +12,7 @@ import { createIssue, BRIEF_MARKER } from "./lib/github.mjs";
 
 const MAX_QUEUE = 5;
 const MAX_NOTABLE = 4;
+const MAX_IDEAS = 3;
 
 const readJson = async (p, fallback) => {
   try { return JSON.parse(await readFile(p, "utf8")); }
@@ -19,6 +20,9 @@ const readJson = async (p, fallback) => {
 };
 
 const issueRef = (n) => (Number.isInteger(Number(n)) ? ` (#${n})` : "");
+
+const benchLink = (context) =>
+  context?.ideaBench?.number ? `#${context.ideaBench.number}` : "the idea bench issue";
 
 function renderDrive(drive, warnings) {
   if (!drive || typeof drive !== "object" || Array.isArray(drive)) {
@@ -97,6 +101,22 @@ function renderDrift(drift, warnings) {
   }).join("\n");
 }
 
+// Section 6 is an addition beyond docs/WEEKLY-BRIEF.md, added at the owner's request. It sits
+// after SPEND deliberately: it is the only optional part of the brief, and nothing above it
+// should ever be pushed down the page by ideas nobody asked for.
+function renderIdeas(ideas, warnings) {
+  if (!Array.isArray(ideas) || !ideas.length) {
+    return "_Nothing worth surfacing this week._";
+  }
+  if (ideas.length > MAX_IDEAS) {
+    warnings.push(`idea bench offered ${ideas.length}; kept the first ${MAX_IDEAS}`);
+  }
+  return ideas.slice(0, MAX_IDEAS).map((i) =>
+    `**${i?.title || "(untitled)"}**\n\n${i?.why || ""}` +
+    (i?.fit ? `\n\n*Why it fits you:* ${i.fit}` : "")
+  ).join("\n\n---\n\n");
+}
+
 function renderSpend(metrics) {
   if (!metrics) return "_Metrics unavailable this week — treat that as a gap, not as zero usage._";
   const w = metrics.week || {};
@@ -145,6 +165,7 @@ function renderHealth(metrics, health) {
 async function main() {
   const brief = await readJson(".agent/brief.json");
   const metrics = await readJson(".agent/metrics.json", null);
+  const context = await readJson(".agent/context.json", null);
   const warnings = [];
 
   const date = new Date().toISOString().slice(0, 10);
@@ -174,6 +195,13 @@ async function main() {
     "## 5. SPEND",
     "",
     renderSpend(metrics),
+    "",
+    "## 6. FROM THE IDEA BENCH",
+    "",
+    renderIdeas(brief.ideas, warnings),
+    "",
+    `<sub>Nightly picks; this is the week's best of them. Not tasks — ignore freely. ` +
+      `Full bench: ${benchLink(context)}</sub>`,
     ""
   ];
 
