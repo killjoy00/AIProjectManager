@@ -10,6 +10,13 @@ export const CAP = Number(process.env.PORTFOLIO_CAP || 10);
 export const TRIAGE_MARKER = "<!-- apm:triage -->";
 export const BRIEF_MARKER = "<!-- apm:brief -->";
 export const SYSTEM_MARKER = "<!-- apm:system -->";
+export const IDEA_MARKER = "<!-- apm:idea -->";
+
+// One rolling issue rather than an issue per idea. Ideas are cheap to produce and mostly not
+// worth acting on; giving each one its own issue would bury the portfolio in things nobody
+// asked for. It carries the `system` label so isProjectIssue() excludes it and it never counts
+// against the active/hot cap.
+export const BENCH_TITLE = "💡 Idea bench";
 
 export const STATUS_LABELS = ["background", "active", "hot", "done"];
 

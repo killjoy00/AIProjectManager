@@ -6,6 +6,7 @@
 
 import { readFile } from "node:fs/promises";
 import { addComment, TRIAGE_MARKER } from "./lib/github.mjs";
+import { postIdeas } from "./lib/bench.mjs";
 
 const MAX_COMMENT = 60000;      // GitHub's hard limit is 65536
 const MAX_COMMENTS_PER_RUN = 15;
@@ -29,6 +30,16 @@ async function main() {
     // The model produced nothing usable. That is a failure, not a quiet no-op.
     console.error(e.message);
     process.exit(1);
+  }
+
+  // Ideas go to the rolling bench, not to project issues. Done before the comment work so a
+  // night that produced only ideas still records them.
+  try {
+    const posted = await postIdeas(output.ideas);
+    console.log(posted ? `bench: added ${posted.count} idea(s) to #${posted.number}` : "bench: no ideas this run");
+  } catch (e) {
+    // An idea is a nice-to-have; never let it cost the night's actual triage work.
+    console.error(`bench: could not post ideas (${e.message}) — continuing`);
   }
 
   const entries = Array.isArray(output.comments) ? output.comments : [];
