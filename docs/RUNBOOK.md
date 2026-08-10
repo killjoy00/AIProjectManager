@@ -147,7 +147,8 @@ drag-and-drop uploader cannot do this — that's the gotcha that cost time befor
 
 | When | What | Where |
 |---|---|---|
-| 02:00 CT daily | Nightly triage — one unit of work per `active`/`hot` project | issue comments |
+| 02:17 CT daily | Nightly triage — one unit of work per `active`/`hot` project | issue comments |
+| 05:33 CT daily | Second attempt — no-ops if the 02:17 run already succeeded | — |
 | Mon 07:00 CT | Weekly brief | new issue labeled `brief` |
 | Any time | Quick capture | dashboard → new `background` issue |
 
@@ -163,6 +164,26 @@ A late scheduled run is normal and is **not** a failure — GitHub gives no guar
 punctuality, only that it fires eventually. The dashboard reflects this: it goes amber after 30h
 without a nightly run, not after 30 minutes. Do not go looking for a bug because a run is an hour
 late.
+
+### "You've hit your org's monthly spend limit"
+
+**This almost certainly is not a spend limit.** It is a known misnomer in Claude Code 2.1.119+
+for an exhausted five-hour subscription usage window, reported the same way whether or not you
+have an org or any billing ceiling at all. It clears by itself when the window refreshes.
+Tracked upstream in Claude Code issues #52908, #52960 and #52679.
+
+Observed here on 2026-08-10: the 08:24 UTC run died with that message and the same credential
+worked fine at 12:40 — about four hours later, with nobody touching any setting.
+
+The schedule handles this: two attempts a day in different windows, and the second no-ops when
+the first succeeded. A window exhaustion on the first attempt **does not** open a
+`blocked:human` issue — only the day's final attempt escalates, because that label has to keep
+meaning "a human is actually needed."
+
+If both attempts fail this way on the same day, the ceiling is genuinely too low for daily runs.
+Real options then: check https://claude.ai/settings/usage, or switch to `ANTHROPIC_API_KEY` with
+a hard cap set in the console — both workflows already accept either credential, so it is a
+secret swap rather than a rewrite.
 
 ### Your side of the gates
 

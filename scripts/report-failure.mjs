@@ -4,9 +4,44 @@
 // One issue per workflow, reused across failures, so a persistent break doesn't produce thirty
 // identical issues in a month.
 
+import { readFileSync } from "node:fs";
 import { upsertSystemIssue, SYSTEM_MARKER } from "./lib/github.mjs";
 
 const job = process.env.FAILED_JOB || "unknown workflow";
+
+// A depleted Claude usage window is not something a human can act on — it refreshes on its own,
+// roughly every five hours, and the schedule already makes a second attempt in a later window.
+// Filing a blocked:human issue for it would train the owner to ignore that label, which is the
+// one thing it cannot afford. Only escalate if this was the last attempt of the day.
+//
+// The CLI reports this as "You've hit your org's monthly spend limit" — a known misnomer in
+// Claude Code 2.1.119+ for an exhausted five-hour window rather than any billing ceiling.
+const QUOTA_PATTERNS = [
+  /monthly spend limit/i,
+  /usage limit/i,
+  /rate.?limit/i,
+  /429/
+];
+
+function looksLikeQuota() {
+  try {
+    const log = readFileSync(".agent/agent.log", "utf8");
+    return QUOTA_PATTERNS.some((p) => p.test(log));
+  } catch {
+    return false;
+  }
+}
+
+const isLastAttempt = process.env.IS_LAST_ATTEMPT === "true";
+
+if (looksLikeQuota() && !isLastAttempt) {
+  console.log(
+    "Failure looks like an exhausted Claude usage window, and a later attempt is still " +
+    "scheduled today. Not filing a blocked:human issue — that label must mean a human is " +
+    "actually needed."
+  );
+  process.exit(0);
+}
 const runUrl = process.env.GITHUB_RUN_ID
   ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
   : "(no run URL)";

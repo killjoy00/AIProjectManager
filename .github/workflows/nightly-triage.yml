@@ -12,10 +12,18 @@ name: nightly-triage
 
 on:
   schedule:
-    # :17, not :00. GitHub delays scheduled runs under load and the top of the hour is the
-    # worst-contended minute — their own docs recommend scheduling off the hour. The 07:00 UTC
-    # run on 2026-08-10 had still not started 31 minutes late, which is what prompted this.
-    - cron: "17 7 * * *"
+    # Two attempts a day, in different Claude usage windows.
+    #
+    # Subscription usage refreshes on a roughly five-hour cycle. When a window is spent the CLI
+    # exits with "You've hit your org's monthly spend limit" — a known misnomer in Claude Code
+    # 2.1.119+ for an exhausted window rather than any billing ceiling; it clears by itself. The
+    # 2026-08-10 run died that way at 08:24 UTC and the same credential worked fine at 12:40.
+    #
+    # So: 02:17 CT primary, 05:33 CT fallback. The fallback no-ops when the first succeeded.
+    # Neither is on :00 or :30 — GitHub delays scheduled runs under load and those are the two
+    # most contended slots; their own docs recommend scheduling away from them.
+    - cron: "17 7 * * *"      # 02:17 CT
+    - cron: "33 10 * * *"     # 05:33 CT — only does work if the 02:17 attempt did not succeed
   workflow_dispatch:
     inputs:
       # GitHub renders the description, not the input name, so each one names itself.
@@ -38,7 +46,29 @@ permissions:
   actions: read
 
 jobs:
+  # Cheap gate so the second window costs a few seconds when the first one already worked.
+  # A skipped job shows as skipped rather than failed, so it never muddies the health signal.
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.check.outputs.run }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - id: check
+        env:
+          GH_OWNER: ${{ github.repository_owner }}
+          GH_REPO: ${{ github.event.repository.name }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+        run: node scripts/should-run-triage.mjs
+
   triage:
+    needs: guard
+    if: needs.guard.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25   # hard stop; a run that hits this is reported as truncated, not silent
     env:
@@ -166,4 +196,8 @@ jobs:
         if: failure()
         env:
           FAILED_JOB: nightly-triage
+          # Only the day's final attempt escalates a spent usage window to a blocked:human
+          # issue. github.event.schedule names the cron that fired, so this is exact rather
+          # than inferred from the clock. A manual dispatch is always treated as final.
+          IS_LAST_ATTEMPT: ${{ github.event_name != 'schedule' || github.event.schedule == '33 10 * * *' }}
         run: node scripts/report-failure.mjs
