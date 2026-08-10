@@ -73,6 +73,19 @@ export const statusOf = (issue) => labelsOf(issue).find((l) => STATUS_LABELS.inc
 
 export const has = (issue, label) => labelsOf(issue).includes(label);
 
+// Optional `Review kill criteria by: YYYY-MM-DD` line in a charter. Kill criteria written on
+// day one are a guess; this makes revisiting them something the system raises rather than
+// something the owner has to remember.
+export function reviewDateOf(body) {
+  const m = /^\s*Review kill criteria by:\s*(\d{4}-\d{2}-\d{2})\s*$/im.exec(body || "");
+  if (!m) return null;
+  const d = new Date(m[1] + "T00:00:00Z");
+  return Number.isNaN(d.getTime()) ? null : m[1];
+}
+
+export const reviewOverdue = (iso) =>
+  iso ? new Date(iso + "T00:00:00Z").getTime() <= Date.now() : false;
+
 export function projectRepoOf(body) {
   const m = /^\s*Repo:\s*([A-Za-z0-9._-]+\/[A-Za-z0-9._-]+|none)\s*$/im.exec(body || "");
   if (!m) return null;

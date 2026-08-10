@@ -84,6 +84,19 @@ export function projectRepoOf(body) {
   return m[1].toLowerCase() === "none" ? null : m[1];
 }
 
+// Optional `Review kill criteria by: YYYY-MM-DD` line in a charter. Kill criteria written on
+// day one are a guess; this makes revisiting them a thing the system surfaces rather than a
+// thing the owner has to remember.
+export function reviewDateOf(body) {
+  const m = /^\s*Review kill criteria by:\s*(\d{4}-\d{2}-\d{2})\s*$/im.exec(body || "");
+  if (!m) return null;
+  const d = new Date(m[1] + "T00:00:00Z");
+  return Number.isNaN(d.getTime()) ? null : m[1];
+}
+
+export const reviewOverdue = (iso) =>
+  iso ? new Date(iso + "T00:00:00Z").getTime() <= Date.now() : false;
+
 export const isBriefIssue = (issue) => labelsOf(issue).includes("brief");
 export const isSystemIssue = (issue) => labelsOf(issue).includes("system");
 

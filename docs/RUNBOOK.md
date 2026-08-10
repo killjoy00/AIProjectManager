@@ -208,6 +208,24 @@ through the Claude GitHub App, which is installed per-repository. If a session s
 **https://github.com/settings/installations** → the Claude app → **Repository access** → add the
 repo. This is unrelated to `GH_API_TOKEN` and does not affect the nightly agent.
 
+## 4c. Revisiting kill criteria
+
+Kill criteria written on day one are a guess. To schedule a rethink, put a line anywhere in the
+charter:
+
+```
+Review kill criteria by: 2026-09-10
+```
+
+Once that date passes, the project appears under **Waiting on you** on the dashboard, and the
+Monday brief is required to raise it in DRIFT with a concrete recommendation — keep the
+thresholds, change them to specific new numbers, or kill the project. "Worth revisiting" is
+explicitly not an acceptable answer.
+
+Update or delete the line once you've reviewed it, or it keeps nagging — which is the point.
+
+This is a convention, not part of `docs/CHARTER-TEMPLATE.md`; that file is kept verbatim to spec.
+
 ## 5. Security model
 
 The agents hold **no write credentials**. Each run is three stages:

@@ -7,7 +7,8 @@
 
 import {
   json, authed, gh, ghOwner, ghRepo, labelsOf, statusOf, has, projectRepoOf,
-  daysSince, readJsonKey, HEARTBEAT_KEY, CACHE_KEY, CACHE_TTL
+  daysSince, readJsonKey, reviewDateOf, reviewOverdue,
+  HEARTBEAT_KEY, CACHE_KEY, CACHE_TTL
 } from "./_shared.js";
 
 const CAP = 10;
@@ -101,6 +102,8 @@ async function build(env) {
     projectRepo: projectRepoOf(i.body),
     charterPresent: /##\s*What it is/i.test(i.body || ""),
     killCriteriaPresent: /##\s*Kill criteria/i.test(i.body || ""),
+    reviewBy: reviewDateOf(i.body),
+    reviewOverdue: reviewOverdue(reviewDateOf(i.body)),
     updatedAt: i.updated_at,
     daysSinceUpdate: daysSince(i.updated_at),
     commentCount: i.comments,
@@ -134,6 +137,10 @@ async function build(env) {
     ...live.filter((p) => !p.killCriteriaPresent).map((p) => ({
       kind: "charter", label: "Active without kill criteria",
       title: p.title, url: p.url, number: p.number, days: p.daysSinceUpdate
+    })),
+    ...projects.filter((p) => p.reviewOverdue).map((p) => ({
+      kind: "review", label: "Kill criteria due for review (set " + p.reviewBy + ")",
+      title: p.title, url: p.url, number: p.number, days: daysSince(p.reviewBy)
     }))
   ];
 

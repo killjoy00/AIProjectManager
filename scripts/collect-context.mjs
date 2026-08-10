@@ -10,7 +10,8 @@ import { writeFile, mkdir } from "node:fs/promises";
 import {
   OWNER, REPO, CAP,
   listOpenIssues, listComments, labelsOf, statusOf, projectRepoOf,
-  isProjectIssue, isBriefIssue, daysSince, TRIAGE_MARKER, BRIEF_MARKER
+  isProjectIssue, isBriefIssue, daysSince, reviewDateOf, reviewOverdue,
+  TRIAGE_MARKER, BRIEF_MARKER
 } from "./lib/github.mjs";
 
 const OUT_DIR = ".agent";
@@ -84,6 +85,8 @@ async function main() {
       projectRepo: projectRepoOf(body),
       charterPresent: /##\s*What it is/i.test(body),
       killCriteriaPresent: /##\s*Kill criteria/i.test(body),
+      reviewBy: reviewDateOf(body),
+      reviewOverdue: reviewOverdue(reviewDateOf(body)),
       buildApproved,
       createdAt: issue.created_at,
       updatedAt: issue.updated_at,
