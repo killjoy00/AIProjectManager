@@ -151,8 +151,18 @@ drag-and-drop uploader cannot do this — that's the gotcha that cost time befor
 | Mon 07:00 CT | Weekly brief | new issue labeled `brief` |
 | Any time | Quick capture | dashboard → new `background` issue |
 
-Schedules are anchored to CDT (UTC-5). November–March they fire an hour earlier (01:00 and
-06:00 CT). Deliberately not corrected for — nothing in this system is time-sensitive.
+Schedules are anchored to CDT (UTC-5). November–March they fire an hour earlier. Deliberately
+not corrected for — nothing in this system is time-sensitive.
+
+**Both crons deliberately avoid :00.** GitHub delays scheduled workflows under load, and the top
+of the hour is the most contended minute; their docs recommend scheduling off the hour. The first
+real nightly run was scheduled for 07:00 UTC and had not started 31 minutes later, so the crons
+moved to `:17` and `:23`.
+
+A late scheduled run is normal and is **not** a failure — GitHub gives no guarantee of
+punctuality, only that it fires eventually. The dashboard reflects this: it goes amber after 30h
+without a nightly run, not after 30 minutes. Do not go looking for a bug because a run is an hour
+late.
 
 ### Your side of the gates
 

@@ -6,7 +6,8 @@ name: monday-brief
 
 on:
   schedule:
-    - cron: "0 12 * * 1"
+    # :23, not :00 — see the note in nightly-triage.yml. Monday 12:23 UTC is 07:23 CT.
+    - cron: "23 12 * * 1"
   workflow_dispatch:
     inputs:
       # GitHub renders the description, not the input name, so each one names itself.
