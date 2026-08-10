@@ -62,7 +62,17 @@ export async function ghPaged(path, { max = 500 } = {}) {
       throw new Error(`GitHub GET ${url} -> ${res.status}: ${text.slice(0, 400)}`);
     }
     const page = await res.json();
-    if (!Array.isArray(page)) break;
+    // Some GitHub list endpoints (actions/runs, actions/artifacts, search) wrap results in an
+    // object instead of returning a bare array. This used to `break`, which silently produced an
+    // empty result — that is how the first weekly brief reported "0 runs" for a busy week. Fail
+    // loudly instead; a caller for one of those endpoints needs to page it itself.
+    if (!Array.isArray(page)) {
+      const keys = Object.keys(page || {}).slice(0, 5).join(", ");
+      throw new Error(
+        `ghPaged: ${url} returned an object, not an array (keys: ${keys}). ` +
+        `This endpoint wraps its results — page it directly rather than with ghPaged.`
+      );
+    }
     out.push(...page);
 
     const link = res.headers.get("link") || "";

@@ -8,7 +8,7 @@
 // plus run outcomes and any sign that an agent run was truncated or rate-limited.
 
 import { writeFile, mkdir } from "node:fs/promises";
-import { OWNER, REPO, gh, ghPaged } from "./lib/github.mjs";
+import { OWNER, REPO, gh } from "./lib/github.mjs";
 
 const WINDOW_DAYS = Number(process.env.METRICS_WINDOW_DAYS || 7);
 
@@ -31,12 +31,33 @@ async function main() {
   const since = new Date(Date.now() - WINDOW_DAYS * 86400000);
   const prevSince = new Date(Date.now() - WINDOW_DAYS * 2 * 86400000);
 
-  const runs = await ghPaged(
-    `/repos/${OWNER}/${REPO}/actions/runs?created=%3E%3D${prevSince.toISOString().slice(0, 10)}`,
-    { max: 300 }
-  ).catch(() => []);
+  // The Actions runs endpoint returns {total_count, workflow_runs:[…]}, not a bare array.
+  // ghPaged stops at the first non-array page, so using it here silently produced zero runs
+  // every time — which is how the first real brief came to report "0 runs, 0 minutes" in a
+  // week that had plenty. Page it explicitly instead.
+  const all = [];
+  const from = prevSince.toISOString().slice(0, 10);
+  for (let page = 1; page <= 3; page++) {
+    let batch;
+    try {
+      batch = await gh(
+        `/repos/${OWNER}/${REPO}/actions/runs?created=%3E%3D${from}&per_page=100&page=${page}`
+      );
+    } catch (e) {
+      console.error(`metrics: page ${page} failed (${e.message}) — reporting on what we have`);
+      break;
+    }
+    const runs = batch?.workflow_runs || [];
+    all.push(...runs);
+    if (runs.length < 100) break;
+  }
 
-  const all = Array.isArray(runs) ? runs : runs.workflow_runs || [];
+  if (!all.length) {
+    // Distinguish "genuinely no runs" from "the query broke". A brief that quietly claims zero
+    // activity is worse than one that admits it could not measure.
+    console.error("metrics: no workflow runs returned — verify this is real before trusting §5");
+  }
+
   const thisWeek = all.filter((r) => new Date(r.created_at) >= since);
   const lastWeek = all.filter((r) => new Date(r.created_at) < since && new Date(r.created_at) >= prevSince);
 
