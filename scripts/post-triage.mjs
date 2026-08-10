@@ -6,7 +6,7 @@
 
 import { readFile } from "node:fs/promises";
 import { addComment, TRIAGE_MARKER } from "./lib/github.mjs";
-import { postIdeas } from "./lib/bench.mjs";
+import { postIdeas, updateLearning } from "./lib/bench.mjs";
 
 const MAX_COMMENT = 60000;      // GitHub's hard limit is 65536
 const MAX_COMMENTS_PER_RUN = 15;
@@ -36,9 +36,22 @@ async function main() {
   // night that produced only ideas still records them.
   try {
     const posted = await postIdeas(output.ideas);
-    console.log(posted ? `bench: added ${posted.count} idea(s) to #${posted.number}` : "bench: no ideas this run");
+    if (posted) {
+      console.log(`bench: added ${posted.count} idea(s) to #${posted.number}`);
+    } else {
+      // The prompt requires 1–3 every run, so an empty batch means the agent did not follow
+      // instructions rather than that it had nothing to say. Visible, but not fatal.
+      console.log("::warning::bench: the agent returned no ideas — the prompt requires 1-3 every run");
+    }
+
+    // Distilled taste, rewritten from the owner's reactions. Kept in the issue body rather than
+    // re-derived nightly so it compounds instead of decaying.
+    if (output.benchLearning) {
+      const learned = await updateLearning(output.benchLearning);
+      if (learned) console.log(`bench: updated learned-taste section on #${learned.number}`);
+    }
   } catch (e) {
-    // An idea is a nice-to-have; never let it cost the night's actual triage work.
+    // Ideas are a side function; never let them cost the night's actual triage work.
     console.error(`bench: could not post ideas (${e.message}) — continuing`);
   }
 

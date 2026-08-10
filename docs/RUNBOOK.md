@@ -154,7 +154,7 @@ drag-and-drop uploader cannot do this — that's the gotcha that cost time befor
 
 ## 3b. The idea bench
 
-The nightly agent also proposes **0–3 new project ideas** per run. They go to a single rolling
+The nightly agent also proposes **1–3 new project ideas** per run — never zero. They go to a single rolling
 issue titled **💡 Idea bench**, never to a project issue and never as new issues of their own —
 an idea nobody asked for should not cost a triage decision. It carries the `system` label, so it
 is excluded from the project list and never counts against the active/hot cap.
@@ -162,11 +162,25 @@ is excluded from the project list and never counts against the active/hot cap.
 The Monday brief harvests the week's best and surfaces **at most three** in a new section 6. So
 generation is nightly and cheap; publication is weekly and restrained.
 
-Both the nightly and weekly prompts are told that **zero ideas is a valid answer** — filler there
-teaches you to skip the section, and then a good idea gets skipped too.
+**It always returns something.** Both prompts require at least one idea, and an empty section in
+the brief is rendered as a gap with a warning rather than as a legitimate "nothing this week".
 
-**Steering it:** the agent reads the bench issue, including your comments on it, before
-suggesting anything. Reply there to kill a direction and it will drop it rather than rephrase.
+### How it learns
+
+Reacting on the bench is the whole mechanism. One line is enough — *"more like this"*,
+*"never again"*, *"good but not now"*.
+
+Each run the agent reads every reaction you have ever left there, plus a distilled
+**"What the agent has learned about your taste"** section kept in the bench issue body, and
+rewrites that section from what it now believes. Keeping the distillation in the body rather than
+re-deriving it nightly means it compounds instead of decaying, and it stays visible.
+
+**You can edit that section by hand.** If it has drawn the wrong conclusion, correcting it there
+is the fastest way to fix future suggestions — the agent reads your version back on the next run
+and treats it as authoritative. Only the region between the `apm:learning` markers is rewritten,
+so anything you write around it survives.
+
+Saying nothing teaches it nothing: with no reactions, it keeps guessing from your charters alone.
 **Turning it off:** close the bench issue. Nothing recreates it unless the agent has ideas to
 post, and it will simply reopen a fresh one — so if you want it off for good, say so in
 `docs/prompts/nightly-triage.md` instead.

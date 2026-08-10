@@ -106,7 +106,11 @@ function renderDrift(drift, warnings) {
 // should ever be pushed down the page by ideas nobody asked for.
 function renderIdeas(ideas, warnings) {
   if (!Array.isArray(ideas) || !ideas.length) {
-    return "_Nothing worth surfacing this week._";
+    // The owner asked for this section never to come back empty, so an empty one is a gap in
+    // the brief rather than a legitimate "nothing this week".
+    warnings.push("no ideas surfaced — the brief is required to pick at least one from the bench");
+    return "_No ideas were surfaced. The bench accumulates nightly, so this is a gap in the " +
+      "brief rather than an empty bench — check the run log._";
   }
   if (ideas.length > MAX_IDEAS) {
     warnings.push(`idea bench offered ${ideas.length}; kept the first ${MAX_IDEAS}`);
