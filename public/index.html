@@ -702,6 +702,16 @@
             '<div class="md">' + md(c.body) + '</div></div>';
         }).join("")
       : '<div class="empty" style="padding:8px 0">No comments yet.</div>';
+
+    // Answering the weekly brief's decision queue means writing a sentence back. Without this
+    // the panel could change a label and approve a build but not reply.
+    h += '<div style="margin-top:12px">' +
+      '<textarea class="bodyedit" id="cmtIn" style="min-height:96px" ' +
+        'placeholder="Reply — the agent reads this before its next run…"></textarea>' +
+      '<div style="display:flex;gap:8px;margin-top:8px;align-items:center">' +
+      '<button class="actbtn" data-comment="1">Comment</button>' +
+      '<span class="cmtwho">⌘/Ctrl + Enter</span>' +
+      '</div><div class="dmsg" id="cmtMsg"></div></div>';
     h += '</div>';
 
     $("dBody").innerHTML = h;
@@ -749,10 +759,47 @@
       .catch(function () { return "## What it is\n\n## Kill criteria\n\n"; });
   }
 
+  function postComment() {
+    if (!current) return;
+    var box = $("cmtIn");
+    if (!box) return;
+    var text = box.value.trim();
+    var msg = $("cmtMsg");
+    if (!text) { if (msg) { msg.textContent = "Nothing to post."; msg.className = "dmsg err"; } return; }
+
+    if (msg) { msg.textContent = "Posting…"; msg.className = "dmsg"; }
+    api("/api/issue", {
+      method: "POST",
+      body: JSON.stringify({ number: current.number, action: "comment", body: text })
+    })
+      .then(function () { return api("/api/issue?number=" + current.number); })
+      .then(function (d) {
+        current = d;
+        renderDrawer();
+        var m = $("cmtMsg");
+        if (m) { m.textContent = "Posted ✓"; m.className = "dmsg ok"; }
+        pull(true);
+      })
+      .catch(function (e) {
+        if (e.message === "auth") return;
+        var m = $("cmtMsg");
+        if (m) { m.textContent = "Failed: " + e.message; m.className = "dmsg err"; }
+      });
+  }
+
+  // Ctrl/Cmd+Enter to post, so a one-line reply doesn't need a trip to the mouse.
+  $("dBody").addEventListener("keydown", function (e) {
+    if (e.target && e.target.id === "cmtIn" && (e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      e.preventDefault();
+      postComment();
+    }
+  });
+
   $("dBody").addEventListener("click", function (e) {
-    var el = e.target.closest("[data-setstatus],[data-build],[data-edit],[data-save],[data-canceledit]");
+    var el = e.target.closest("[data-setstatus],[data-build],[data-edit],[data-save],[data-canceledit],[data-comment]");
     if (!el || !current) return;
     var ds = el.dataset;
+    if (ds.comment !== undefined) { postComment(); return; }
     if (ds.setstatus !== undefined) {
       if (ds.setstatus === current.status) return;
       act({ number: current.number, action: "status", status: ds.setstatus }, "Status → " + ds.setstatus);

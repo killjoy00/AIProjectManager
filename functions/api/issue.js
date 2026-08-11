@@ -18,6 +18,7 @@ const TEMPLATE_PATH = "docs/CHARTER-TEMPLATE.md";
 const TRIAGE_MARKER = "<!-- apm:triage -->";
 const BRIEF_MARKER = "<!-- apm:brief -->";
 const MAX_BODY = 60000;
+const MAX_COMMENT = 60000;   // GitHub's hard limit is 65536
 
 const bustCache = (env) =>
   env.IDEAS_KV ? env.IDEAS_KV.delete("dashboard:cache").catch(() => {}) : Promise.resolve();
@@ -124,6 +125,21 @@ export async function onRequestPost({ request, env }) {
       });
       await bustCache(env);
       return json({ ok: true, action: "build" });
+    }
+
+    // Answering the brief's decision queue almost always means writing a sentence back. Without
+    // this the dashboard could change a label and approve a build but not reply, so every
+    // decision-queue item still bounced the owner out to GitHub.
+    if (payload.action === "comment") {
+      const text = String(payload.body ?? "").trim();
+      if (!text) return json({ error: "empty_comment" }, 400);
+      if (text.length > MAX_COMMENT) return json({ error: "comment_too_long" }, 400);
+      await gh(env, `${base}/comments`, {
+        method: "POST",
+        body: JSON.stringify({ body: text })
+      });
+      await bustCache(env);
+      return json({ ok: true, action: "comment" });
     }
 
     if (payload.action === "body") {
