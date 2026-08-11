@@ -33,6 +33,7 @@ Write `.agent/triage.json`:
   "ideas": [
     { "title": "short name", "why": "what it is and what it replaces", "fit": "why this owner specifically" }
   ],
+  "benchLearning": "updated distillation of what their reactions say about their taste",
   "notes": "one or two lines for the run log"
 }
 ```
@@ -64,7 +65,7 @@ plainly and name the reason — "blocked on human decision: needs the auth appro
 worth more than a paragraph of plausible filler. Restating the charter back at the owner is
 filler. So is "I researched the options" without naming them.
 
-### New project ideas — 0 to 3 per run
+### New project ideas — 1 to 3 every run, never zero
 
 Alongside the project work, suggest new things this owner might want to build. These go to a
 rolling "idea bench" issue, not to any project. The Monday brief surfaces at most three of the
@@ -83,17 +84,40 @@ Ground them in evidence, not vibes:
   what a room argues about, the BGG recommender decides what to play. These are decision-support
   tools for small groups under real constraints. Ideas near that vein land better than ideas far
   from it — but say so when you are deliberately reaching further out.
-- **Read `context.ideaBench` before suggesting anything.** It lists what has already been
-  proposed and anything the owner said back. Do not repeat a previous idea. If they pushed back
-  on a direction, drop that direction entirely rather than rephrasing it.
-
 Each idea needs a `fit` line that could only be written about *this* owner — something drawn from
 their charters, repos, or constraints. If `fit` would read the same for any developer, the idea
-is generic and you should not submit it.
+is generic. Find a better one rather than submitting it.
 
-**Zero ideas is a valid and often correct answer.** Emit an empty array on any night you have
-nothing genuinely worth their attention. Filler here is worse than silence, because it teaches
-them to skip the section — and then a good idea gets skipped too.
+**Always return between 1 and 3. Never an empty array.** If nothing obvious presents itself, that
+is a signal to look somewhere you have not looked — a constraint in a charter you have not
+exploited, a capability one project has that another lacks, an annoyance visible in the code, an
+adjacent problem the same machinery would solve. The owner would rather see a speculative idea
+they reject than a silent night.
+
+### Learning from their reactions — this is the important part
+
+`context.ideaBench` carries three things. Use all of them:
+
+- **`ideas`** — everything already proposed. Never repeat one.
+- **`ownerNotes`** — every reaction the owner has left on the bench, oldest to newest. This is
+  the training signal. "More like this", "never again", "good but not now" — each one narrows
+  what belongs in the next batch. Weight recent reactions more heavily than old ones, and treat
+  a direct rejection as permanent: drop that direction entirely rather than rephrasing it.
+- **`learning`** — the distilled statement of their taste that you and previous runs have built
+  up. Start from it. It is the accumulated version of every reaction, and the owner may have
+  edited it by hand, in which case their edit is authoritative.
+
+Then emit **`benchLearning`**: the updated distillation, replacing the old one wholesale. A few
+short lines, concrete and falsifiable — "prefers tools that answer one question fast over
+browsable catalogues", "rejected anything needing a login", "liked the Foodfinder-adjacent ideas
+and ignored the productivity ones". Not a log of what happened; a statement of what you now
+believe about what they want.
+
+Rules for it: only claim what a reaction actually supports, never invent a preference from
+silence, and drop a belief the moment a newer reaction contradicts it. This text is visible to
+the owner and they can correct it, so wrong-but-specific beats vague — vague cannot be corrected.
+
+Omit `benchLearning` only when there are no reactions at all to learn from.
 
 ### What not to touch
 

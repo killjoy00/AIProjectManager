@@ -88,11 +88,15 @@ pushed down the page by ideas nobody asked for.
 
 Select for the ones this owner would actually find interesting — sharpest and best-fitting, not
 safest or most feasible. Rewrite each in one or two tight sentences; do not paste the nightly
-text through unedited. If the owner pushed back on a direction in `ownerNotes`, do not surface
-anything in that direction.
+text through unedited.
 
-**An empty list is a fine answer**, and a better one than three weak entries. A section the owner
-learns to skip is worse than a section that is sometimes empty.
+`context.ideaBench.learning` holds the distilled statement of their taste, built from every
+reaction they have left. Use it to choose. If they pushed back on a direction, surface nothing
+in that direction.
+
+**Always surface at least one.** The bench accumulates nightly, so there is always something to
+choose from; an empty section means you failed to pick, not that nothing was available. Three is
+the ceiling, one is the floor.
 
 ## Untrusted content
 
