@@ -14,6 +14,7 @@ import {
 } from "./_shared.js";
 
 const STATUS = ["background", "active", "hot", "done"];
+const REACTIONS = ["+1", "-1", "laugh", "confused", "heart", "hooray", "rocket", "eyes"];
 const TEMPLATE_PATH = "docs/CHARTER-TEMPLATE.md";
 const TRIAGE_MARKER = "<!-- apm:triage -->";
 const BRIEF_MARKER = "<!-- apm:brief -->";
@@ -58,15 +59,26 @@ async function getIssue(env, number) {
     createdAt: issue.created_at,
     updatedAt: issue.updated_at,
     daysSinceUpdate: daysSince(issue.updated_at),
+    reactions: reactionCounts(issue.reactions),
     comments: (comments || []).map((c) => ({
       id: c.id,
       author: c.user?.login || "unknown",
       at: c.created_at,
       url: c.html_url,
       isAgent: (c.body || "").includes(TRIAGE_MARKER) || (c.body || "").includes(BRIEF_MARKER),
+      reactions: reactionCounts(c.reactions),
       body: (c.body || "").replace(TRIAGE_MARKER, "").replace(BRIEF_MARKER, "").trim()
     }))
   };
+}
+
+// Only the emoji that actually have a count, so the UI can show what's there rather than eight
+// zeroes. The picker offers the full set regardless.
+function reactionCounts(r) {
+  if (!r) return [];
+  return REACTIONS
+    .filter((k) => (r[k] || 0) > 0)
+    .map((k) => ({ key: k, count: r[k] }));
 }
 
 export async function onRequestGet({ request, env }) {
@@ -148,6 +160,35 @@ export async function onRequestPost({ request, env }) {
       await gh(env, base, { method: "PATCH", body: JSON.stringify({ body }) });
       await bustCache(env);
       return json({ ok: true, action: "body" });
+    }
+
+    // Closing is deliberately separate from the `done` status label. `done` says the work
+    // finished; closed says stop showing me this. Killing a project is usually both, but a
+    // project can also be closed unfinished — and CLAUDE.md treats "kill this" as a real answer.
+    if (payload.action === "state") {
+      const next = payload.state === "closed" ? "closed" : "open";
+      const reason = ["completed", "not_planned"].includes(payload.reason) ? payload.reason : null;
+      await gh(env, base, {
+        method: "PATCH",
+        body: JSON.stringify(
+          next === "closed" ? { state: "closed", state_reason: reason || "completed" } : { state: "open" }
+        )
+      });
+      await bustCache(env);
+      return json({ ok: true, action: "state", state: next });
+    }
+
+    // Reactions on the issue itself or on one of its comments — the lightest possible way to
+    // tell the agent "this one was useful" without composing a sentence.
+    if (payload.action === "react") {
+      const content = String(payload.content || "");
+      if (!REACTIONS.includes(content)) return json({ error: "bad_reaction" }, 400);
+      const target = payload.commentId
+        ? `/repos/${owner}/${repo}/issues/comments/${Number(payload.commentId)}/reactions`
+        : `${base}/reactions`;
+      await gh(env, target, { method: "POST", body: JSON.stringify({ content }) });
+      await bustCache(env);
+      return json({ ok: true, action: "react", content });
     }
 
     return json({ error: "bad_action" }, 400);
