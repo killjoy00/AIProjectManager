@@ -15,6 +15,10 @@ const CAP = 10;
 const STALE_DAYS = 7;
 const TRIAGE_MARKER = "<!-- apm:triage -->";
 const BRIEF_MARKER = "<!-- apm:brief -->";
+const IDEA_MARKER = "<!-- apm:idea -->";
+const LEARNING_START = "<!-- apm:learning:start -->";
+const LEARNING_END = "<!-- apm:learning:end -->";
+const BENCH_TITLE = "💡 Idea bench";
 
 // A nightly run that hasn't landed in this many hours means something is wrong.
 const NIGHTLY_STALE_HOURS = 30;
@@ -77,6 +81,76 @@ async function repoActivity(env, fullName) {
   } catch (e) {
     return { fullName, error: e.message };
   }
+}
+
+// The idea bench, unpacked for the dashboard.
+//
+// The bench only works if the owner reacts to it — the nightly agent distils those reactions into
+// the learning section and picks better next time. Leaving the bench visible only on GitHub meant
+// the one input the feature depends on lived somewhere the owner didn't want to go, so the whole
+// loop sat open. Everything here is read-only; reactions post back through /api/issue's `comment`
+// action against the bench's own issue number.
+function parseIdeas(body) {
+  // postIdeas() in scripts/lib/bench.mjs emits "### <title>" per idea, then prose, then an
+  // optional "*Why it fits you:* …" line. Parse that shape back out rather than showing raw text.
+  const out = [];
+  const parts = (body || "").split(/^###[ \t]+/m).slice(1);
+  for (const part of parts) {
+    const nl = part.indexOf("\n");
+    const title = (nl === -1 ? part : part.slice(0, nl)).trim();
+    if (!title) continue;
+    const rest = (nl === -1 ? "" : part.slice(nl + 1))
+      .replace(/<sub>[\s\S]*?<\/sub>/g, "")
+      .trim();
+    const fitAt = rest.search(/^\*Why it fits you:\*/m);
+    out.push({
+      title,
+      why: (fitAt === -1 ? rest : rest.slice(0, fitAt)).trim(),
+      fit: fitAt === -1 ? "" : rest.slice(fitAt).replace(/^\*Why it fits you:\*/, "").trim()
+    });
+  }
+  return out;
+}
+
+async function ideaBench(env, issues) {
+  const bench = (issues || []).find((i) => isSystem(i) && i.title === BENCH_TITLE);
+  if (!bench) return null;
+
+  const body = bench.body || "";
+  const s = body.indexOf(LEARNING_START);
+  const e = body.indexOf(LEARNING_END);
+  const learning = s !== -1 && e !== -1 && e > s
+    ? body.slice(s + LEARNING_START.length, e).trim()
+    : "";
+
+  const owner = ghOwner(env).toLowerCase();
+  let comments = [];
+  try {
+    comments = await gh(
+      env,
+      `/repos/${ghOwner(env)}/${ghRepo(env)}/issues/${bench.number}/comments?per_page=100`
+    );
+  } catch { /* bench still renders without its comments */ }
+
+  const ideaComments = (comments || []).filter((c) => (c.body || "").includes(IDEA_MARKER));
+  const latest = ideaComments[ideaComments.length - 1] || null;
+  const ownerNotes = (comments || []).filter(
+    (c) => (c.user?.login || "").toLowerCase() === owner
+  );
+  const lastNote = ownerNotes[ownerNotes.length - 1] || null;
+
+  return {
+    number: bench.number,
+    url: bench.html_url,
+    // A placeholder learning section means the agent has nothing to go on yet. Say that
+    // explicitly rather than rendering the placeholder as if it were a finding.
+    learning: /^_Nothing learned yet/.test(learning) ? "" : learning,
+    at: latest?.created_at || null,
+    ideas: latest ? parseIdeas(latest.body) : [],
+    batches: ideaComments.length,
+    reactions: ownerNotes.length,
+    lastReactionAt: lastNote?.created_at || null
+  };
 }
 
 async function build(env) {
@@ -167,6 +241,8 @@ async function build(env) {
   const latestBrief = (issues || []).filter(isBrief)
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0] || null;
 
+  const bench = await ideaBench(env, issues);
+
   return {
     generated: new Date().toISOString(),
     repo: `${owner}/${repo}`,
@@ -202,6 +278,7 @@ async function build(env) {
     latestBrief: latestBrief
       ? { number: latestBrief.number, title: latestBrief.title, url: latestBrief.html_url, at: latestBrief.created_at }
       : null,
+    bench,
     projects: projects.sort((a, b) => {
       const rank = { hot: 0, active: 1, background: 2, done: 3 };
       return (rank[a.status] ?? 9) - (rank[b.status] ?? 9) || a.daysSinceUpdate - b.daysSinceUpdate;

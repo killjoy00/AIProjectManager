@@ -201,6 +201,34 @@
     min-height:320px;color:var(--ink);background:var(--card)}
   .dmsg{font-family:'IBM Plex Mono',monospace;font-size:11.5px;margin-top:10px;min-height:16px}
   .dmsg.ok{color:var(--ok)} .dmsg.err{color:var(--danger)}
+
+  /* Idea bench. Reacting is the whole point of the feature, so the reaction buttons are the
+     most prominent thing in each card — one tap, no typing, thumb-sized on a phone. */
+  .idea{border-top:1px solid var(--line);padding:14px 0}
+  .idea:first-child{border-top:0;padding-top:4px}
+  .ideat{font-weight:600;font-size:14.5px;line-height:1.35}
+  .ideaw{font-size:13px;color:var(--muted);margin-top:6px;line-height:1.5}
+  .ideaf{font-size:12.5px;margin-top:6px;line-height:1.5;font-style:italic;color:var(--muted)}
+  .reacts{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+  .rbtn{font-family:'IBM Plex Mono',monospace;font-size:11px;padding:8px 12px;border-radius:20px;
+    border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;
+    min-height:36px}
+  .rbtn:hover{border-color:var(--ink)}
+  .rbtn[disabled]{opacity:.45;cursor:default}
+  .learn{font-size:12.5px;line-height:1.55;background:var(--bg);border:1px solid var(--line);
+    border-radius:8px;padding:10px 12px;margin-bottom:12px}
+  .learn .dlabel{margin-bottom:4px}
+
+  /* Charter checkboxes. GitHub renders `- [ ]` as something you can tap; the drawer used to
+     render it as the literal text "[ ]", so ticking a gate meant editing raw markdown in a
+     textarea on a phone. These are real controls that patch the issue body on tap. */
+  .md li.task{list-style:none;margin-left:-18px;display:flex;gap:8px;align-items:flex-start}
+  .ckbox{flex:0 0 auto;width:20px;height:20px;margin-top:1px;border:1.5px solid var(--line);
+    border-radius:4px;background:var(--card);cursor:pointer;font-size:13px;line-height:1;
+    color:var(--ok);padding:0;display:flex;align-items:center;justify-content:center}
+  .ckbox:hover{border-color:var(--ink)}
+  .ckbox[disabled]{opacity:.5;cursor:default}
+  .ckbox.on{border-color:var(--ok)}
   @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -222,7 +250,8 @@
     <div>
       <div class="kicker mono">Build Log</div>
       <h1 class="disp">Machine State</h1>
-      <p class="sub">What ran, what's stalled, and what's waiting on you. Issues live on GitHub.</p>
+      <p class="sub">What ran, what's stalled, and what's waiting on you. Everything here is
+        actionable from this page — statuses, build approval, charter checkboxes, replies.</p>
     </div>
     <div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
@@ -287,6 +316,11 @@
       <div class="panel">
         <div class="ptitle">Latest brief</div>
         <div id="brief"></div>
+      </div>
+
+      <div class="panel">
+        <div class="ptitle">Idea bench <span class="pcount" id="bCount">0</span></div>
+        <div id="bench"></div>
       </div>
     </div>
   </div>
@@ -545,6 +579,108 @@
       : '<div class="empty">No brief yet. The first one posts Monday at 07:00 CT.</div>';
   }
 
+  // The bench is the one panel that exists to collect input rather than report state. The
+  // nightly agent distils these reactions into the "learned about your taste" section and picks
+  // against it next run, so a bench nobody reacts to gets no better — which is why the reactions
+  // are one tap and live here rather than on GitHub.
+  var REACTS = [
+    { key: "more", label: "More like this" },
+    { key: "no", label: "Not for me" },
+    { key: "later", label: "Good, not now" }
+  ];
+
+  function renderBench() {
+    var b = data && data.bench;
+    var c = $("bCount");
+    var ideas = (b && b.ideas) || [];
+    c.textContent = ideas.length;
+    c.className = "pcount" + (ideas.length === 0 ? " zero" : "");
+
+    if (!b) {
+      $("bench").innerHTML = '<div class="empty">No idea bench yet. The nightly agent creates it ' +
+        'on its first run.</div>';
+      return;
+    }
+    if (!ideas.length) {
+      $("bench").innerHTML = '<div class="empty">Bench is empty. The nightly agent adds ideas ' +
+        'each run; the Monday brief surfaces the best of them.</div>';
+      return;
+    }
+
+    var h = "";
+    if (b.learning) {
+      h += '<div class="learn"><div class="dlabel">What it has learned about your taste</div>' +
+        esc(b.learning) + '</div>';
+    } else {
+      h += '<div class="learn"><div class="dlabel">What it has learned about your taste</div>' +
+        'Nothing yet — it learns only from what you say back. One tap below is enough.</div>';
+    }
+
+    h += ideas.map(function (i, n) {
+      return '<div class="idea">' +
+        '<div class="ideat">' + esc(i.title) + '</div>' +
+        (i.why ? '<div class="ideaw">' + esc(i.why) + '</div>' : "") +
+        (i.fit ? '<div class="ideaf">' + esc(i.fit) + '</div>' : "") +
+        '<div class="reacts">' +
+          REACTS.map(function (r) {
+            return '<button class="rbtn" data-react="' + r.key + '" data-idea="' + n + '">' +
+              r.label + '</button>';
+          }).join("") +
+        '</div></div>';
+    }).join("");
+
+    h += '<div style="margin-top:14px">' +
+      '<textarea id="benchIn" class="bodyin" style="min-height:64px" ' +
+        'placeholder="Anything else — &quot;never suggest X&quot;, &quot;more things like Tab&quot;…"></textarea>' +
+      '<div style="display:flex;gap:8px;margin-top:8px">' +
+        '<button class="actbtn" data-benchsend="1">Send to the bench</button></div>' +
+      '<div class="dmsg" id="benchMsg"></div></div>';
+
+    $("bench").innerHTML = h;
+  }
+
+  function sendBench(text, btn) {
+    var b = data && data.bench;
+    var msg = $("benchMsg");
+    if (!b || !b.number || !text) return;
+    if (btn) btn.disabled = true;
+    if (msg) { msg.textContent = "Sending…"; msg.className = "dmsg"; }
+    api("/api/issue", {
+      method: "POST",
+      body: JSON.stringify({ number: b.number, action: "comment", body: text })
+    })
+      .then(function () {
+        var m = $("benchMsg");
+        if (m) { m.textContent = "Sent ✓ — the next nightly run reads this."; m.className = "dmsg ok"; }
+        var box = $("benchIn");
+        if (box) box.value = "";
+        pull(true);
+      })
+      .catch(function (e) {
+        if (e.message === "auth") return;
+        if (btn) btn.disabled = false;
+        var m = $("benchMsg");
+        if (m) { m.textContent = "Failed: " + e.message; m.className = "dmsg err"; }
+      });
+  }
+
+  $("bench").addEventListener("click", function (e) {
+    var el = e.target.closest("[data-react],[data-benchsend]");
+    if (!el) return;
+    if (el.dataset.benchsend !== undefined) {
+      var box = $("benchIn");
+      sendBench(box ? box.value.trim() : "", el);
+      return;
+    }
+    var b = data && data.bench;
+    var idea = ((b && b.ideas) || [])[Number(el.dataset.idea)];
+    var react = REACTS.filter(function (r) { return r.key === el.dataset.react; })[0];
+    if (!idea || !react) return;
+    // Name the idea in the comment — the agent reads these as free text weeks later, and
+    // "Not for me" on its own tells it nothing about which idea was rejected.
+    sendBench("**" + react.label + "** — " + idea.title, el);
+  });
+
   var SCOLOR = { background: "#9AA0A8", active: "#2B7FFF", hot: "#EE5A36", done: "#1FA971" };
 
   function renderProjects() {
@@ -577,12 +713,15 @@
     renderSpend();
     renderActivity();
     renderBrief();
+    renderBench();
   }
 
   // ── markdown ─────────────────────────────────────────────
   // Deliberately small: enough for charters and agent comments, and it escapes first so
   // issue text can never inject markup.
-  function md(src) {
+  // `tasks` turns "- [ ] …" into real checkboxes. Only the issue body passes it — a checkbox in
+  // an agent comment isn't the owner's to tick, and rendering one there would imply it was.
+  function md(src, tasks) {
     var out = esc(src || "").replace(/\r\n/g, "\n");
     var blocks = [];
     out = out.replace(/```([\s\S]*?)```/g, function (_, code) {
@@ -603,11 +742,25 @@
     out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
                       '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
     out = out.replace(/^&gt;\s?(.*)$/gm, "<blockquote>$1</blockquote>");
+    // Task items first — the generic list rule below would otherwise swallow "[ ]" as plain text.
+    // The counter is document order, which is also the order toggleTask() walks the raw body, so
+    // the nth checkbox on screen is the nth "- [ ]" in the source.
+    if (tasks) {
+      var tn = 0;
+      out = out.replace(/^[ \t]*[-*][ \t]+\[([ xX])\][ \t]*(.*)$/gm, function (_, mark, text) {
+        var on = mark.toLowerCase() === "x";
+        return '<li class="task"><button class="ckbox' + (on ? " on" : "") + '" data-task="' +
+          (tn++) + '" aria-pressed="' + on + '" title="Toggle">' + (on ? "✓" : "") +
+          '</button><span>' + text + '</span></li>';
+      });
+    }
     // [ \t]* not \s* — with the m flag, \s* eats the blank line separating a list from the
     // paragraph above it, which merges them into one chunk and nests <ul> inside <p>.
     out = out.replace(/^[ \t]*[-*][ \t]+(.*)$/gm, "<li>$1</li>")
              .replace(/^[ \t]*\d+\.[ \t]+(.*)$/gm, "<li>$1</li>");
-    out = out.replace(/(<li>[\s\S]*?<\/li>)(?!\s*<li>)/g, "<ul>$1</ul>");
+    // Match <li ...> as well as <li> — task items carry a class and would otherwise be left
+    // unwrapped, then swallowed by the <p> fallback below.
+    out = out.replace(/(<li(?:\s[^>]*)?>[\s\S]*?<\/li>)(?!\s*<li(?:\s|>))/g, "<ul>$1</ul>");
     out = out.split(/\n{2,}/).map(function (chunk) {
       var t = chunk.trim();
       if (!t) return "";
@@ -690,7 +843,7 @@
       '</div><div class="dmsg" id="dMsg"></div></div>';
 
     h += '<div class="dsection"><div class="dlabel">Body</div>' +
-      '<div class="md" id="dBodyMd">' + (d.body ? md(d.body) : '<p style="color:var(--muted)">Empty.</p>') +
+      '<div class="md" id="dBodyMd">' + (d.body ? md(d.body, true) : '<p style="color:var(--muted)">Empty.</p>') +
       '</div></div>';
 
     h += '<div class="dsection"><div class="dlabel">Comments (' + d.comments.length + ')</div>';
@@ -759,6 +912,64 @@
       .catch(function () { return "## What it is\n\n## Kill criteria\n\n"; });
   }
 
+  // Flip the nth "- [ ]" in the raw body and PATCH the whole thing back. The body is the only
+  // representation GitHub gives us, so a checkbox tap is a body edit — it just doesn't look like
+  // one. Fenced code blocks are skipped so a checkbox shown in an example never shifts the count.
+  function retickBody(body, idx, want) {
+    var fences = [], re = /```[\s\S]*?```/g, m;
+    while ((m = re.exec(body))) fences.push([m.index, m.index + m[0].length]);
+    var inFence = function (i) {
+      for (var k = 0; k < fences.length; k++) if (i >= fences[k][0] && i < fences[k][1]) return true;
+      return false;
+    };
+    var n = 0, tre = /^([ \t]*[-*][ \t]+\[)([ xX])(\])/gm, t;
+    while ((t = tre.exec(body))) {
+      if (inFence(t.index)) continue;
+      if (n === idx) {
+        var at = t.index + t[1].length;
+        return body.slice(0, at) + (want ? "x" : " ") + body.slice(at + 1);
+      }
+      n++;
+    }
+    return null;
+  }
+
+  function toggleTask(btn, idx) {
+    if (!current || btn.disabled) return;
+    var want = btn.getAttribute("aria-pressed") !== "true";
+    var next = retickBody(current.body || "", idx, want);
+    var msg = $("dMsg");
+    if (next === null) {
+      if (msg) { msg.textContent = "Couldn't find that checkbox in the body — reload and retry."; msg.className = "dmsg err"; }
+      return;
+    }
+    // Optimistic: the tap should feel instant, and a failure re-renders from the server anyway.
+    btn.disabled = true;
+    btn.classList.toggle("on", want);
+    btn.setAttribute("aria-pressed", String(want));
+    btn.textContent = want ? "✓" : "";
+    if (msg) { msg.textContent = "Saving…"; msg.className = "dmsg"; }
+
+    api("/api/issue", {
+      method: "POST",
+      body: JSON.stringify({ number: current.number, action: "body", body: next })
+    })
+      .then(function () { current.body = next; return api("/api/issue?number=" + current.number); })
+      .then(function (d) {
+        current = d;
+        renderDrawer();
+        var m = $("dMsg");
+        if (m) { m.textContent = want ? "Ticked ✓" : "Unticked ✓"; m.className = "dmsg ok"; }
+        pull(true);
+      })
+      .catch(function (e) {
+        if (e.message === "auth") return;
+        renderDrawer();
+        var m = $("dMsg");
+        if (m) { m.textContent = "Failed: " + e.message; m.className = "dmsg err"; }
+      });
+  }
+
   function postComment() {
     if (!current) return;
     var box = $("cmtIn");
@@ -796,10 +1007,11 @@
   });
 
   $("dBody").addEventListener("click", function (e) {
-    var el = e.target.closest("[data-setstatus],[data-build],[data-edit],[data-save],[data-canceledit],[data-comment]");
+    var el = e.target.closest("[data-setstatus],[data-build],[data-edit],[data-save],[data-canceledit],[data-comment],[data-task]");
     if (!el || !current) return;
     var ds = el.dataset;
     if (ds.comment !== undefined) { postComment(); return; }
+    if (ds.task !== undefined) { toggleTask(el, Number(ds.task)); return; }
     if (ds.setstatus !== undefined) {
       if (ds.setstatus === current.status) return;
       act({ number: current.number, action: "status", status: ds.setstatus }, "Status → " + ds.setstatus);
