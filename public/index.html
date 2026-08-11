@@ -229,6 +229,40 @@
   .ckbox:hover{border-color:var(--ink)}
   .ckbox[disabled]{opacity:.5;cursor:default}
   .ckbox.on{border-color:var(--ok)}
+
+  /* Pull requests. Reviewing a diff was the last routine thing that forced a trip to GitHub —
+     and merging was the single most frequent one. */
+  .prrow{display:flex;gap:8px;align-items:center;width:100%;text-align:left;background:none;
+    border:0;border-top:1px solid var(--line);padding:11px 0;cursor:pointer;font:inherit;color:inherit}
+  .prrow:first-child{border-top:0}
+  .prname{flex:1;min-width:0;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .prmeta{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--muted);flex:0 0 auto}
+  .prtag{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.06em;padding:2px 6px;
+    border-radius:10px;border:1px solid var(--line);color:var(--muted);flex:0 0 auto}
+  .prtag.draft{border-color:var(--muted)}
+  .mergebar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 12px;border-radius:8px;
+    border:1px solid var(--line);background:var(--bg);font-size:12.5px;margin-bottom:10px}
+  .mergebar.ok{border-color:var(--ok)} .mergebar.bad{border-color:var(--danger)}
+  .diff{border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-bottom:10px}
+  .diffhead{display:flex;gap:8px;align-items:center;padding:8px 10px;background:var(--bg);
+    font-family:'IBM Plex Mono',monospace;font-size:11px;border-bottom:1px solid var(--line)}
+  .diffname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .diffadd{color:var(--ok)} .diffdel{color:var(--danger)}
+  .diffbody{margin:0;padding:8px 10px;overflow-x:auto;font-family:'IBM Plex Mono',monospace;
+    font-size:11px;line-height:1.5;background:var(--card)}
+  .diffbody .a{color:var(--ok)} .diffbody .d{color:var(--danger)}
+  .diffbody .h{color:var(--muted)}
+  .chk{display:flex;gap:6px;align-items:center;font-family:'IBM Plex Mono',monospace;font-size:11px;
+    padding:3px 0}
+  .chkdot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
+
+  /* Emoji reactions — the cheapest possible "this was useful" for an agent comment. */
+  .rx{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px;align-items:center}
+  .rxb{font-size:13px;line-height:1;padding:5px 9px;border-radius:14px;border:1px solid var(--line);
+    background:var(--card);cursor:pointer;min-height:30px}
+  .rxb:hover{border-color:var(--ink)}
+  .rxb[disabled]{opacity:.45;cursor:default}
+  .rxc{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);margin-left:3px}
   @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -284,6 +318,11 @@
       <div class="panel">
         <div class="ptitle">Waiting on you <span class="pcount" id="wCount">0</span></div>
         <div id="waiting"></div>
+      </div>
+
+      <div class="panel">
+        <div class="ptitle">Open pull requests <span class="pcount" id="prCount">0</span></div>
+        <div id="prs"></div>
       </div>
 
       <div class="panel">
@@ -395,6 +434,9 @@
       })
       .then(function (d) {
         data = d; cacheSave(); render();
+        // PRs come from a separate endpoint because they span the project repos, not just this
+        // one. Fired without awaiting so a slow project repo can't hold up the whole dashboard.
+        pullPRs();
         if (d.stale) {
           setSync("stale", "#E8912D");
           banner('<span>GitHub call failed — showing the last good copy.</span><button id="retryBtn">Retry</button>');
@@ -579,6 +621,33 @@
       : '<div class="empty">No brief yet. The first one posts Monday at 07:00 CT.</div>';
   }
 
+  var prs = [];
+
+  function renderPRs() {
+    var c = $("prCount");
+    c.textContent = prs.length;
+    c.className = "pcount" + (prs.length === 0 ? " zero" : "");
+    $("prs").innerHTML = prs.length
+      ? prs.map(function (p) {
+          return '<button class="prrow" data-pr="' + p.number + '" data-prrepo="' + esc(p.repo) + '">' +
+            '<span class="prname">' + esc(p.title) + '</span>' +
+            (p.draft ? '<span class="prtag draft">DRAFT</span>' : "") +
+            '<span class="prmeta">' + esc(p.repo.split("/")[1]) + '#' + p.number + '</span>' +
+            '</button>';
+        }).join("")
+      : '<div class="empty">No open pull requests. Agent work lands here for review before ' +
+        'it merges.</div>';
+  }
+
+  function pullPRs() {
+    return api("/api/pr")
+      .then(function (r) { prs = r.prs || []; renderPRs(); })
+      .catch(function (e) {
+        if (e.message === "auth") return;
+        $("prs").innerHTML = '<div class="dmsg err">Couldn\'t load PRs: ' + esc(e.message) + '</div>';
+      });
+  }
+
   // The bench is the one panel that exists to collect input rather than report state. The
   // nightly agent distils these reactions into the "learned about your taste" section and picks
   // against it next run, so a bench nobody reacts to gets no better — which is why the reactions
@@ -630,7 +699,7 @@
     }).join("");
 
     h += '<div style="margin-top:14px">' +
-      '<textarea id="benchIn" class="bodyin" style="min-height:64px" ' +
+      '<textarea id="benchIn" class="bodyedit" style="min-height:64px" ' +
         'placeholder="Anything else — &quot;never suggest X&quot;, &quot;more things like Tab&quot;…"></textarea>' +
       '<div style="display:flex;gap:8px;margin-top:8px">' +
         '<button class="actbtn" data-benchsend="1">Send to the bench</button></div>' +
@@ -714,6 +783,7 @@
     renderActivity();
     renderBrief();
     renderBench();
+    renderPRs();
   }
 
   // ── markdown ─────────────────────────────────────────────
@@ -777,6 +847,7 @@
     $("drawer").classList.remove("on");
     $("scrim").classList.remove("on");
     current = null;
+    currentPR = null;
   }
   $("dClose").addEventListener("click", closeDrawer);
   $("scrim").addEventListener("click", closeDrawer);
@@ -791,13 +862,16 @@
     return fetch(path, opts).then(function (r) {
       if (r.status === 401) { lockOut("Passphrase rejected."); throw new Error("auth"); }
       return r.json().then(function (b) {
-        if (!r.ok) throw new Error(b.detail || b.error || ("http " + r.status));
+        // `hint` first: a missing token scope is a thing the owner can fix, and the raw GitHub
+        // 403 text says nothing about how.
+        if (!r.ok) throw new Error(b.hint || b.detail || b.error || ("http " + r.status));
         return b;
       });
     });
   }
 
   function openIssue(number) {
+    currentPR = null;
     $("drawer").classList.add("on");
     $("scrim").classList.add("on");
     $("dNum").textContent = "#" + number;
@@ -812,9 +886,33 @@
       });
   }
 
+  // A short set, not all eight. The point is a one-tap signal on an agent comment; offering the
+  // full GitHub picker on a phone trades the one virtue this has — speed — for completeness
+  // nobody asked for.
+  var RX = [
+    { key: "+1", ch: "👍" }, { key: "-1", ch: "👎" },
+    { key: "heart", ch: "❤️" }, { key: "rocket", ch: "🚀" }, { key: "eyes", ch: "👀" }
+  ];
+  var RXCH = { "+1": "👍", "-1": "👎", heart: "❤️", rocket: "🚀", eyes: "👀",
+               laugh: "😄", hooray: "🎉", confused: "😕" };
+
+  function reactionBar(counts, commentId) {
+    var attr = commentId ? ' data-rxcomment="' + commentId + '"' : "";
+    var existing = (counts || []).map(function (r) {
+      return '<span class="rxb" style="cursor:default">' + (RXCH[r.key] || "?") +
+        '<span class="rxc">' + r.count + "</span></span>";
+    }).join("");
+    var picker = RX.map(function (r) {
+      return '<button class="rxb" data-react="' + r.key + '"' + attr + ' title="' + r.key + '">' +
+        r.ch + "</button>";
+    }).join("");
+    return '<div class="rx">' + existing + picker + "</div>";
+  }
+
   function renderDrawer() {
     var d = current;
     if (!d) return;
+    currentPR = null;
     $("dNum").textContent = "#" + d.number + " · " + d.status.toUpperCase();
     $("dTitle").textContent = d.title;
 
@@ -838,6 +936,9 @@
         : '<button class="actbtn" data-build="1">Approve /build</button>') +
       '<button class="actbtn ghost" data-edit="1">' +
         (d.charterPresent ? "Edit body" : "Start charter") + '</button>' +
+      (d.state === "closed"
+        ? '<button class="actbtn ghost" data-issuestate="open">Reopen</button>'
+        : '<button class="actbtn ghost" data-issuestate="closed" data-reason="not_planned">Close</button>') +
       '<a class="actbtn ghost" style="text-decoration:none" href="' + esc(d.url) +
         '" target="_blank" rel="noreferrer">Open on GitHub ↗</a>' +
       '</div><div class="dmsg" id="dMsg"></div></div>';
@@ -852,7 +953,8 @@
           return '<div class="cmt' + (c.isAgent ? " agent" : "") + '"><div class="cmthead">' +
             '<span class="cmtwho">' + (c.isAgent ? "AGENT" : esc(c.author)) + '</span>' +
             '<span class="cmtwho">' + esc(ago(c.at)) + '</span></div>' +
-            '<div class="md">' + md(c.body) + '</div></div>';
+            '<div class="md">' + md(c.body) + '</div>' +
+            reactionBar(c.reactions, c.id) + '</div>';
         }).join("")
       : '<div class="empty" style="padding:8px 0">No comments yet.</div>';
 
@@ -910,6 +1012,142 @@
     return api("/api/issue?template=1")
       .then(function (r) { templateCache = r.template; return templateCache; })
       .catch(function () { return "## What it is\n\n## Kill criteria\n\n"; });
+  }
+
+  // ── pull request drawer ──────────────────────────────────
+  var currentPR = null;
+
+  function diffHtml(patch) {
+    return esc(patch).split("\n").map(function (l) {
+      var cls = l.charAt(0) === "+" ? "a" : l.charAt(0) === "-" ? "d" : l.slice(0, 2) === "@@" ? "h" : "";
+      return cls ? '<span class="' + cls + '">' + l + "</span>" : l;
+    }).join("\n");
+  }
+
+  var CHKCOLOR = { success: "#1FA971", failure: "#D33", timed_out: "#D33", cancelled: "#9AA0A8" };
+
+  function openPR(repo, number) {
+    current = null;
+    currentPR = null;
+    $("drawer").classList.add("on");
+    $("scrim").classList.add("on");
+    $("dNum").textContent = repo + " #" + number;
+    $("dTitle").textContent = "Loading…";
+    $("dBody").innerHTML = '<div class="empty">Fetching the diff…</div>';
+
+    api("/api/pr?repo=" + encodeURIComponent(repo) + "&number=" + number)
+      .then(function (d) { currentPR = d; renderPRDrawer(); })
+      .catch(function (e) {
+        if (e.message === "auth") return;
+        $("dBody").innerHTML = '<div class="dmsg err">Couldn\'t load: ' + esc(e.message) + '</div>';
+      });
+  }
+
+  function renderPRDrawer() {
+    var d = currentPR;
+    if (!d) return;
+    $("dNum").textContent = d.repo + " #" + d.number + " · " +
+      (d.merged ? "MERGED" : d.state.toUpperCase()) + (d.draft ? " · DRAFT" : "");
+    $("dTitle").textContent = d.title;
+
+    var m = d.merge || {};
+    var h = "";
+
+    h += '<div class="mergebar ' + (m.canMerge ? "ok" : (m.state === "conflict" ? "bad" : "")) + '">' +
+      '<span>' + (m.canMerge ? "Ready to merge" : esc(m.why || m.state || "")) + '</span>' +
+      '<span class="prmeta">' + esc(d.head || "?") + ' → ' + esc(d.base || "?") + '</span>' +
+      '<span class="prmeta diffadd">+' + (d.additions || 0) + '</span>' +
+      '<span class="prmeta diffdel">−' + (d.deletions || 0) + '</span>' +
+      '<span class="prmeta">' + plural(d.changedFiles || 0, "file") + '</span></div>';
+
+    h += '<div class="dsection"><div class="dlabel">Actions</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+      (d.merged || d.state === "closed"
+        ? '<button class="actbtn ghost" disabled>' + (d.merged ? "Merged" : "Closed") + '</button>'
+        : (d.draft
+            ? '<button class="actbtn" data-prready="1">Mark ready for review</button>'
+            : '<button class="actbtn" data-prmerge="squash">Squash &amp; merge</button>') +
+          '<button class="actbtn ghost" data-prclose="1">Close without merging</button>') +
+      '<a class="actbtn ghost" style="text-decoration:none" href="' + esc(d.url) +
+        '" target="_blank" rel="noreferrer">Open on GitHub ↗</a>' +
+      '</div><div class="dmsg" id="prMsg"></div></div>';
+
+    var ck = d.checks || {};
+    if (ck.total) {
+      h += '<div class="dsection"><div class="dlabel">Checks — ' + ck.total + " total, " +
+        ck.failing + " failing, " + ck.pending + ' pending</div>';
+      h += ck.runs.map(function (r) {
+        var color = r.status !== "completed" ? "#E0A800" : (CHKCOLOR[r.conclusion] || "#9AA0A8");
+        return '<div class="chk"><span class="chkdot" style="background:' + color + '"></span>' +
+          '<a href="' + esc(r.url) + '" target="_blank" rel="noreferrer">' + esc(r.name) + '</a>' +
+          '<span class="prmeta">' + esc(r.status === "completed" ? (r.conclusion || "?") : r.status) +
+          '</span></div>';
+      }).join("");
+      h += '</div>';
+    }
+
+    if (d.body) {
+      h += '<div class="dsection"><div class="dlabel">Description</div>' +
+        '<div class="md">' + md(d.body) + '</div></div>';
+    }
+
+    h += '<div class="dsection"><div class="dlabel">Files (' + d.filesShown +
+      (d.changedFiles > d.filesShown ? " of " + d.changedFiles : "") + ')</div>';
+    h += (d.files || []).map(function (f) {
+      return '<div class="diff"><div class="diffhead">' +
+        '<span class="diffname">' + esc(f.filename) + '</span>' +
+        '<span class="diffadd">+' + f.additions + '</span>' +
+        '<span class="diffdel">−' + f.deletions + '</span></div>' +
+        (f.patch
+          ? '<pre class="diffbody">' + diffHtml(f.patch) + (f.truncated ? "\n… truncated" : "") + '</pre>'
+          : '<pre class="diffbody h">' + (f.binary ? "binary file" : "diff not shown") + '</pre>') +
+        '</div>';
+    }).join("");
+    h += '</div>';
+
+    if ((d.reviews || []).length) {
+      h += '<div class="dsection"><div class="dlabel">Reviews</div>' +
+        d.reviews.map(function (r) {
+          return '<div class="cmt"><div class="cmthead"><span class="cmtwho">' + esc(r.author) +
+            '</span><span class="cmtwho">' + esc(r.state) + '</span></div>' +
+            (r.body ? '<div class="md">' + md(r.body) + '</div>' : "") + '</div>';
+        }).join("") + '</div>';
+    }
+
+    h += '<div class="dsection"><div class="dlabel">Comments (' + (d.comments || []).length + ')</div>';
+    h += (d.comments || []).map(function (c) {
+      return '<div class="cmt"><div class="cmthead"><span class="cmtwho">' + esc(c.author) +
+        '</span><span class="cmtwho">' + esc(ago(c.at)) + '</span></div>' +
+        '<div class="md">' + md(c.body) + '</div></div>';
+    }).join("");
+    h += '<textarea id="prCmtIn" class="bodyedit" style="min-height:64px;margin-top:10px" ' +
+      'placeholder="Reply…"></textarea>' +
+      '<div style="margin-top:8px"><button class="actbtn" data-prcomment="1">Post reply</button></div>' +
+      '</div>';
+
+    $("dBody").innerHTML = h;
+  }
+
+  function prAct(payload, okMsg) {
+    var msg = $("prMsg");
+    if (msg) { msg.textContent = "Working…"; msg.className = "dmsg"; }
+    return api("/api/pr", { method: "POST", body: JSON.stringify(payload) })
+      .then(function () {
+        return api("/api/pr?repo=" + encodeURIComponent(currentPR.repo) + "&number=" + currentPR.number);
+      })
+      .then(function (d) {
+        currentPR = d;
+        renderPRDrawer();
+        var el = $("prMsg");
+        if (el) { el.textContent = okMsg; el.className = "dmsg ok"; }
+        pullPRs();
+        pull(true);
+      })
+      .catch(function (e) {
+        if (e.message === "auth") return;
+        var el = $("prMsg");
+        if (el) { el.textContent = "Failed: " + e.message; el.className = "dmsg err"; }
+      });
   }
 
   // Flip the nth "- [ ]" in the raw body and PATCH the whole thing back. The body is the only
@@ -1007,9 +1245,39 @@
   });
 
   $("dBody").addEventListener("click", function (e) {
-    var el = e.target.closest("[data-setstatus],[data-build],[data-edit],[data-save],[data-canceledit],[data-comment],[data-task]");
+    var pel = e.target.closest("[data-prmerge],[data-prclose],[data-prready],[data-prcomment]");
+    if (pel && currentPR) {
+      var pd = pel.dataset;
+      if (pd.prmerge !== undefined) {
+        prAct({ repo: currentPR.repo, number: currentPR.number, action: "merge", method: pd.prmerge }, "Merged ✓");
+      } else if (pd.prready !== undefined) {
+        prAct({ repo: currentPR.repo, number: currentPR.number, action: "ready" }, "Marked ready ✓");
+      } else if (pd.prclose !== undefined) {
+        prAct({ repo: currentPR.repo, number: currentPR.number, action: "close" }, "Closed ✓");
+      } else if (pd.prcomment !== undefined) {
+        var pbox = $("prCmtIn");
+        var ptext = pbox ? pbox.value.trim() : "";
+        if (ptext) prAct({ repo: currentPR.repo, number: currentPR.number, action: "comment", body: ptext }, "Posted ✓");
+      }
+      return;
+    }
+
+    var el = e.target.closest("[data-setstatus],[data-build],[data-edit],[data-save],[data-canceledit],[data-comment],[data-task],[data-react],[data-issuestate]");
     if (!el || !current) return;
     var ds = el.dataset;
+    if (ds.react !== undefined) {
+      act({
+        number: current.number, action: "react", content: ds.react,
+        commentId: ds.rxcomment ? Number(ds.rxcomment) : undefined
+      }, "Reacted ✓");
+      return;
+    }
+    if (ds.issuestate !== undefined) {
+      act({ number: current.number, action: "state", state: ds.issuestate,
+            reason: ds.reason || undefined },
+          ds.issuestate === "closed" ? "Closed ✓" : "Reopened ✓");
+      return;
+    }
     if (ds.comment !== undefined) { postComment(); return; }
     if (ds.task !== undefined) { toggleTask(el, Number(ds.task)); return; }
     if (ds.setstatus !== undefined) {
@@ -1027,6 +1295,8 @@
   });
 
   document.addEventListener("click", function (e) {
+    var pr = e.target.closest("[data-pr]");
+    if (pr) { e.preventDefault(); openPR(pr.dataset.prrepo, Number(pr.dataset.pr)); return; }
     var row = e.target.closest("[data-issue]");
     if (row) { e.preventDefault(); openIssue(Number(row.dataset.issue)); }
   });
