@@ -268,9 +268,10 @@ export async function onRequestPost({ request, env }) {
         detail: e.detail || e.message,
         status: e.status,
         hint: "The GitHub token needs \"Pull requests: Read and write\" for this repository. " +
-          "github.com → Settings → Developer settings → Personal access tokens → Fine-grained " +
-          "tokens → your token → Repository permissions → Pull requests → Read and write. " +
-          "Then update the GH_API_TOKEN value in the Cloudflare Pages project and redeploy."
+          "Open github.com/settings/personal-access-tokens, tap this token, then Repository " +
+          "permissions → Pull requests → Read and write → Save. Editing permissions does not " +
+          "change the token's value, so nothing needs updating in Cloudflare and no redeploy " +
+          "is needed — just reload this page."
       }, 403);
     }
     return json({ error: "github_error", detail: e.detail || e.message, status: e.status || null }, 502);
