@@ -4,7 +4,9 @@
 // agent many chances to notice something, weekly means the owner is shown at most three. Volume
 // where it is free, restraint where attention is spent.
 
-import { OWNER, REPO, gh, listOpenIssues, listComments, BENCH_TITLE, IDEA_MARKER } from "./github.mjs";
+import {
+  OWNER, REPO, gh, listOpenIssues, listComments, BENCH_TITLE, IDEA_MARKER, stripAgentStamps
+} from "./github.mjs";
 
 // The learning section lives between these markers in the issue body. Distilling what the
 // feedback taught, once, beats re-deriving it from forty comments every night — it compounds
@@ -144,10 +146,13 @@ export async function postIdeas(ideas) {
     .filter((i) => i && typeof i.title === "string" && i.title.trim())
     .slice(0, 3)
     .map((i) => ({
-      title: i.title.trim().slice(0, 200),
-      why: String(i.why || "").trim().slice(0, 1200),
-      fit: String(i.fit || "").trim().slice(0, 600)
-    }));
+      // Same reason as post-triage: the marker and footer are this file's to add, and a model
+      // that echoes them back produces a comment carrying each one twice.
+      title: stripAgentStamps(i.title).slice(0, 200),
+      why: stripAgentStamps(i.why).slice(0, 1200),
+      fit: stripAgentStamps(i.fit).slice(0, 600)
+    }))
+    .filter((i) => i.title);
 
   if (!clean.length) return null;
 

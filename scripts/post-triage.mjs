@@ -5,7 +5,7 @@
 // fully manipulated model can do nothing but comment on the owner's own project issues.
 
 import { readFile } from "node:fs/promises";
-import { addComment, TRIAGE_MARKER } from "./lib/github.mjs";
+import { addComment, TRIAGE_MARKER, stripAgentStamps } from "./lib/github.mjs";
 import { postIdeas, updateLearning } from "./lib/bench.mjs";
 
 const MAX_COMMENT = 60000;      // GitHub's hard limit is 65536
@@ -94,7 +94,7 @@ async function main() {
   for (const { num, body } of accepted) {
     const stamped =
       `${TRIAGE_MARKER}\n**Nightly triage — ${new Date().toISOString().slice(0, 10)}**\n\n` +
-      `${body}\n\n` +
+      `${stripAgentStamps(body)}\n\n` +
       `<sub>Automated. Agent is comment-only; nothing was pushed. [Run log](${runUrl})</sub>`;
     await addComment(num, stamped);
     console.log(`commented on #${num}`);
