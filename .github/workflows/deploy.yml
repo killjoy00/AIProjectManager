@@ -95,6 +95,19 @@ jobs:
           echo "Deploying to Pages project: $resolved"
           echo "name=$resolved" >> "$GITHUB_OUTPUT"
 
+      # Stamp the build into the page. "I don't see the new panel" is otherwise ambiguous
+      # between a failed deploy and a phone holding an old tab, and the two have opposite fixes.
+      - name: Stamp build
+        if: steps.gate.outputs.ready == 'true'
+        run: |
+          set -o pipefail
+          short="${GITHUB_SHA:0:7}"
+          if ! grep -q 'var BUILD = "dev";' public/index.html; then
+            echo "::warning::BUILD placeholder not found — the page will show 'build dev'."
+          fi
+          sed -i "s/var BUILD = \"dev\";/var BUILD = \"$short\";/" public/index.html
+          grep -o 'var BUILD = "[^"]*";' public/index.html
+
       # --branch=main is what Cloudflare treats as the production deployment.
       # Anything else lands as a preview with its own URL.
       - name: Deploy

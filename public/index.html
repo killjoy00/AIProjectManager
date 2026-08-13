@@ -215,6 +215,7 @@
     min-height:36px}
   .rbtn:hover{border-color:var(--ink)}
   .rbtn[disabled]{opacity:.45;cursor:default}
+  .rbtn.promote{border-color:var(--accent);color:var(--accent)}
   .learn{font-size:12.5px;line-height:1.55;background:var(--bg);border:1px solid var(--line);
     border-radius:8px;padding:10px 12px;margin-bottom:12px}
   .learn .dlabel{margin-bottom:4px}
@@ -294,7 +295,8 @@
         <button class="ctrl mono" id="refreshBtn">⟳ Refresh</button>
         <button class="ctrl mono" id="lockBtn">Lock</button>
       </div>
-      <div id="sync"><span class="sdot"></span><span id="syncTxt">ready</span></div>
+      <div id="sync"><span class="sdot"></span><span id="syncTxt">ready</span>
+        <span id="buildTxt" style="margin-left:8px;opacity:.6"></span></div>
     </div>
   </div>
 
@@ -381,12 +383,17 @@
 (function () {
   "use strict";
 
+  // Replaced with the commit SHA by deploy.yml. Shown in the header so "I don't see the new
+  // panel" can be answered by looking rather than guessing — a phone holding an old tab is
+  // indistinguishable from a failed deploy until you can see which build is on screen.
+  var BUILD = "dev";
   var PASS_KEY  = "ai-ideas:pass";
   var CACHE_KEY = "ai-ideas:dash";
   var API       = "/api/dashboard";
   var CAPTURE   = "/api/ideas";
 
   var pass = "", data = null;
+  document.getElementById("buildTxt").textContent = "build " + BUILD;
 
   var $ = function (id) { return document.getElementById(id); };
   var esc = function (s) {
@@ -695,7 +702,15 @@
             return '<button class="rbtn" data-react="' + r.key + '" data-idea="' + n + '">' +
               r.label + '</button>';
           }).join("") +
-        '</div></div>';
+          '<button class="rbtn promote" data-promote="' + n + '">→ Make it a project</button>' +
+        '</div>' +
+        // A per-idea note, not just the shared box at the bottom. "Too close to Foodfinder" is
+        // only useful to the agent if it knows which idea it was about.
+        '<div class="row" style="margin-top:8px">' +
+          '<input class="bare" data-noteidea="' + n + '" placeholder="Note on this one…" />' +
+          '<button class="add" data-sendnote="' + n + '">Send</button>' +
+        '</div>' +
+        '</div>';
     }).join("");
 
     h += '<div style="margin-top:14px">' +
@@ -733,16 +748,76 @@
       });
   }
 
+  // Promoting an idea creates a real project issue AND tells the bench it happened. The second
+  // half matters as much as the first: a promotion is the strongest signal the owner can give
+  // about what to suggest more of, and if it only ever landed as a new issue the agent would
+  // never see it.
+  function promoteIdea(idea, btn) {
+    var b = data && data.bench;
+    var msg = $("benchMsg");
+    if (!idea) return;
+    btn.disabled = true;
+    if (msg) { msg.textContent = "Creating the project…"; msg.className = "dmsg"; }
+    api("/api/ideas", {
+      method: "POST",
+      body: JSON.stringify({
+        title: idea.title,
+        why: [idea.why, idea.fit].filter(Boolean).join("\n\n"),
+        fromBench: b && b.number
+      })
+    })
+      .then(function (r) {
+        var note = "**Promoted to a project** — " + idea.title +
+          (r && r.number ? " → #" + r.number : "");
+        return api("/api/issue", {
+          method: "POST",
+          body: JSON.stringify({ number: b.number, action: "comment", body: note })
+        }).catch(function () { /* the project exists either way; the note is a bonus */ })
+          .then(function () { return r; });
+      })
+      .then(function (r) {
+        var m = $("benchMsg");
+        if (m) {
+          m.textContent = "Created #" + (r && r.number) + " in background ✓ — charter it before it goes active.";
+          m.className = "dmsg ok";
+        }
+        pull(true);
+      })
+      .catch(function (e) {
+        if (e.message === "auth") return;
+        btn.disabled = false;
+        var m = $("benchMsg");
+        if (m) { m.textContent = "Failed: " + e.message; m.className = "dmsg err"; }
+      });
+  }
+
   $("bench").addEventListener("click", function (e) {
-    var el = e.target.closest("[data-react],[data-benchsend]");
+    var el = e.target.closest("[data-react],[data-benchsend],[data-promote],[data-sendnote]");
     if (!el) return;
+    var b = data && data.bench;
+    var ideas = (b && b.ideas) || [];
+
     if (el.dataset.benchsend !== undefined) {
       var box = $("benchIn");
       sendBench(box ? box.value.trim() : "", el);
       return;
     }
-    var b = data && data.bench;
-    var idea = ((b && b.ideas) || [])[Number(el.dataset.idea)];
+    if (el.dataset.promote !== undefined) {
+      promoteIdea(ideas[Number(el.dataset.promote)], el);
+      return;
+    }
+    if (el.dataset.sendnote !== undefined) {
+      var n = Number(el.dataset.sendnote);
+      var input = $("bench").querySelector('[data-noteidea="' + n + '"]');
+      var text = input ? input.value.trim() : "";
+      var about = ideas[n];
+      if (!text || !about) return;
+      sendBench("**On " + about.title + ":** " + text, el);
+      if (input) input.value = "";
+      return;
+    }
+
+    var idea = ideas[Number(el.dataset.idea)];
     var react = REACTS.filter(function (r) { return r.key === el.dataset.react; })[0];
     if (!idea || !react) return;
     // Name the idea in the comment — the agent reads these as free text weeks later, and
