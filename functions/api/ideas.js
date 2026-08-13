@@ -42,6 +42,14 @@ export async function onRequestPost({ request, env }) {
   const why = String(body.why || "").trim().slice(0, MAX_WHY);
   if (!title) return json({ error: "title_required" }, 400);
 
+  // Set when an idea is promoted off the bench rather than typed into quick capture. Worth
+  // recording on the issue: an idea the agent proposed and the owner promoted is the clearest
+  // possible evidence of what to suggest more of, and it should be legible months later.
+  const from = Number(body.fromBench);
+  const provenance = Number.isInteger(from) && from > 0
+    ? `Promoted from the idea bench (#${from}) — proposed by the nightly agent.`
+    : null;
+
   // Every project issue carries the machine-readable repo header the agents parse.
   // `none` is correct here — a freshly captured idea has no code yet.
   const issueBody = [
@@ -49,6 +57,7 @@ export async function onRequestPost({ request, env }) {
     "",
     why ? `**Why it's interesting:** ${why}` : "_Captured without a note._",
     "",
+    ...(provenance ? [provenance, ""] : []),
     "---",
     "",
     "Captured from the dashboard. This is `background` until it has a charter.",
