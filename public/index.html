@@ -216,6 +216,9 @@
   .rbtn:hover{border-color:var(--ink)}
   .rbtn[disabled]{opacity:.45;cursor:default}
   .rbtn.promote{border-color:var(--accent);color:var(--accent)}
+  .rbtn.on{border-color:var(--ink);background:var(--ink);color:#fff}
+  .sent{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.04em;
+    color:var(--ok);margin-top:8px}
   .learn{font-size:12.5px;line-height:1.55;background:var(--bg);border:1px solid var(--line);
     border-radius:8px;padding:10px 12px;margin-bottom:12px}
   .learn .dlabel{margin-bottom:4px}
@@ -665,6 +668,30 @@
     { key: "later", label: "Good, not now" }
   ];
 
+  // Every bench action ends with pull(true), which re-renders this panel and destroys whatever
+  // element the confirmation was written into. The first build did exactly that: the comment
+  // posted, "Sent ✓" was written, and the re-render wiped it a few milliseconds later — so the
+  // button looked dead, and the obvious response was to tap it again and send a duplicate.
+  //
+  // So the confirmation lives outside the DOM and is re-applied on every render. What was sent
+  // is also recorded per idea and persisted, because a tap needs a mark that survives a reload,
+  // not just a line of text that survives the next paint.
+  var BENCH_KEY = "ai-ideas:bench-sent";
+  var benchNotice = "", benchNoticeErr = false, benchSent = {};
+  try { benchSent = JSON.parse(localStorage.getItem(BENCH_KEY) || "{}") || {}; } catch (e) { benchSent = {}; }
+
+  function benchSay(text, isErr) {
+    benchNotice = text;
+    benchNoticeErr = !!isErr;
+    var m = $("benchMsg");
+    if (m) { m.textContent = text; m.className = "dmsg" + (isErr ? " err" : (text ? " ok" : "")); }
+  }
+
+  function markSent(title, label) {
+    benchSent[title] = label;
+    try { localStorage.setItem(BENCH_KEY, JSON.stringify(benchSent)); } catch (e) {}
+  }
+
   function renderBench() {
     var b = data && data.bench;
     var c = $("bCount");
@@ -693,14 +720,16 @@
     }
 
     h += ideas.map(function (i, n) {
+      var sent = benchSent[i.title];
       return '<div class="idea">' +
         '<div class="ideat">' + esc(i.title) + '</div>' +
         (i.why ? '<div class="ideaw">' + esc(i.why) + '</div>' : "") +
         (i.fit ? '<div class="ideaf">' + esc(i.fit) + '</div>' : "") +
+        (sent ? '<div class="sent">✓ you said: ' + esc(sent) + '</div>' : "") +
         '<div class="reacts">' +
           REACTS.map(function (r) {
-            return '<button class="rbtn" data-react="' + r.key + '" data-idea="' + n + '">' +
-              r.label + '</button>';
+            return '<button class="rbtn' + (sent === r.label ? " on" : "") + '" data-react="' +
+              r.key + '" data-idea="' + n + '">' + r.label + '</button>';
           }).join("") +
           '<button class="rbtn promote" data-promote="' + n + '">→ Make it a project</button>' +
         '</div>' +
@@ -721,30 +750,43 @@
       '<div class="dmsg" id="benchMsg"></div></div>';
 
     $("bench").innerHTML = h;
+    // Re-apply the notice after the innerHTML swap that just destroyed the element holding it.
+    if (benchNotice) {
+      var mEl = $("benchMsg");
+      if (mEl) {
+        mEl.textContent = benchNotice;
+        mEl.className = "dmsg" + (benchNoticeErr ? " err" : " ok");
+      }
+    }
   }
 
-  function sendBench(text, btn) {
+  // `mark` is {title, label} when this send should leave a permanent tick on an idea.
+  function sendBench(text, btn, mark) {
     var b = data && data.bench;
-    var msg = $("benchMsg");
-    if (!b || !b.number || !text) return;
+    if (!text) return;
+    if (!b || !b.number) {
+      // Previously a silent return — indistinguishable from a dead button.
+      benchSay("No idea bench loaded yet. Refresh and try again.", true);
+      return;
+    }
     if (btn) btn.disabled = true;
-    if (msg) { msg.textContent = "Sending…"; msg.className = "dmsg"; }
+    benchSay("Sending…");
     api("/api/issue", {
       method: "POST",
       body: JSON.stringify({ number: b.number, action: "comment", body: text })
     })
       .then(function () {
-        var m = $("benchMsg");
-        if (m) { m.textContent = "Sent ✓ — the next nightly run reads this."; m.className = "dmsg ok"; }
+        if (mark) markSent(mark.title, mark.label);
+        benchSay("Sent ✓ — the next nightly run reads this.");
         var box = $("benchIn");
         if (box) box.value = "";
+        renderBench();
         pull(true);
       })
       .catch(function (e) {
         if (e.message === "auth") return;
         if (btn) btn.disabled = false;
-        var m = $("benchMsg");
-        if (m) { m.textContent = "Failed: " + e.message; m.className = "dmsg err"; }
+        benchSay("Failed: " + e.message, true);
       });
   }
 
@@ -757,7 +799,7 @@
     var msg = $("benchMsg");
     if (!idea) return;
     btn.disabled = true;
-    if (msg) { msg.textContent = "Creating the project…"; msg.className = "dmsg"; }
+    benchSay("Creating the project…");
     api("/api/ideas", {
       method: "POST",
       body: JSON.stringify({
@@ -776,18 +818,15 @@
           .then(function () { return r; });
       })
       .then(function (r) {
-        var m = $("benchMsg");
-        if (m) {
-          m.textContent = "Created #" + (r && r.number) + " in background ✓ — charter it before it goes active.";
-          m.className = "dmsg ok";
-        }
+        markSent(idea.title, "Made it a project (#" + (r && r.number) + ")");
+        benchSay("Created #" + (r && r.number) + " in background ✓ — charter it before it goes active.");
+        renderBench();
         pull(true);
       })
       .catch(function (e) {
         if (e.message === "auth") return;
         btn.disabled = false;
-        var m = $("benchMsg");
-        if (m) { m.textContent = "Failed: " + e.message; m.className = "dmsg err"; }
+        benchSay("Failed: " + e.message, true);
       });
   }
 
@@ -820,9 +859,14 @@
     var idea = ideas[Number(el.dataset.idea)];
     var react = REACTS.filter(function (r) { return r.key === el.dataset.react; })[0];
     if (!idea || !react) return;
+    if (benchSent[idea.title] === react.label) {
+      benchSay("Already sent that for “" + idea.title + "”.");
+      return;
+    }
     // Name the idea in the comment — the agent reads these as free text weeks later, and
     // "Not for me" on its own tells it nothing about which idea was rejected.
-    sendBench("**" + react.label + "** — " + idea.title, el);
+    sendBench("**" + react.label + "** — " + idea.title, el,
+      { title: idea.title, label: react.label });
   });
 
   var SCOLOR = { background: "#9AA0A8", active: "#2B7FFF", hot: "#EE5A36", done: "#1FA971" };
