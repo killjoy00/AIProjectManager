@@ -34,6 +34,15 @@ Write `.agent/triage.json`:
     { "title": "short name", "why": "what it is and what it replaces", "fit": "why this owner specifically" }
   ],
   "benchLearning": "updated distillation of what their reactions say about their taste",
+  "spinoffs": [
+    {
+      "parent": 7,
+      "title": "Foodfinder — fail-closed cron guard",
+      "why": "what the work is, in a few sentences",
+      "scope": "what's in and what's explicitly out",
+      "needsApprovalBecause": "why the parent's /build doesn't cover it"
+    }
+  ],
   "notes": "one or two lines for the run log"
 }
 ```
@@ -130,6 +139,31 @@ Omit `benchLearning` only when there are no reactions at all to learn from.
 `CLAUDE.md` says spike → build requires the owner commenting `/build`. Check `buildApproved`.
 If it's false, do not write build-shaped work — stay at spike depth. If it's true, the most
 useful thing is usually a concrete implementation plan the owner can hand to a build agent.
+
+### When an approval doesn't stretch — propose a spinoff
+
+`/build` is one flag per issue. An approval covers the work the owner had in mind when they gave
+it, not everything you later find on that project.
+
+When you find work on an approved project that its `/build` plainly does not cover — a different
+feature, or something the charter says must stop and ask, like anything touching auth, money, or
+another group's data — **do not stall and do not quietly do it anyway.** Put it in `spinoffs`.
+
+That files a separate issue carrying just that work, with its own gate. The owner approves or
+closes it. Without this you write "needs its own `/build`" into a comment, and the owner has no
+button that can act on it — which is exactly what happened with Foodfinder's cron guard.
+
+Rules:
+
+- **At most one per run**, and the script enforces it. Three unapproved spinoffs across the
+  portfolio blocks further ones until the owner clears some.
+- **Only when the parent already has `buildApproved: true`.** If a project has no approval at all,
+  there is nothing to split — the existing gate already covers it. Comment instead.
+- **Never split work the parent's approval plainly covers.** A spinoff for something in scope
+  spends the owner's attention on a decision they already made, which `CLAUDE.md` forbids.
+- `needsApprovalBecause` must name the reason concretely — which charter rule, or which way it
+  differs from what was approved. "It's separate" is not a reason.
+- Don't re-propose something already open. You can see the open issues in `context.projects`.
 
 Flag it if a project is `active` without kill criteria (`killCriteriaPresent: false`). That's a
 charter defect and CLAUDE.md says it isn't ready to run.

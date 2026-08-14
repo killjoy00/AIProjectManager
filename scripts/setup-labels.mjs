@@ -11,6 +11,7 @@ const LABELS = [
   { name: "spike:needed", color: "C2703A", description: "Ready for an agent to investigate." },
   { name: "spike:done",   color: "E8912D", description: "Spike finished — awaiting the owner's /build comment." },
   { name: "blocked:human",color: "C0392B", description: "Agent stopped. Needs a judgment only the owner can make." },
+  { name: "spinoff",      color: "8957E5", description: "Split off an approved project — needs its own /build." },
   { name: "brief",        color: "2B4BF2", description: "A weekly brief issue." },
   { name: "system",       color: "6E7681", description: "Machine-generated housekeeping." }
 ];

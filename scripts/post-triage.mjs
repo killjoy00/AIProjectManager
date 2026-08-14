@@ -7,6 +7,7 @@
 import { readFile } from "node:fs/promises";
 import { addComment, TRIAGE_MARKER, stripAgentStamps } from "./lib/github.mjs";
 import { postIdeas, updateLearning } from "./lib/bench.mjs";
+import { createSpinoffs } from "./lib/spinoff.mjs";
 
 const MAX_COMMENT = 60000;      // GitHub's hard limit is 65536
 const MAX_COMMENTS_PER_RUN = 15;
@@ -53,6 +54,20 @@ async function main() {
   } catch (e) {
     // Ideas are a side function; never let them cost the night's actual triage work.
     console.error(`bench: could not post ideas (${e.message}) — continuing`);
+  }
+
+  // Spinoffs before comments: a comment often references the spinoff it just asked for, and the
+  // owner reading the thread should find the issue already filed rather than promised.
+  try {
+    const { created, rejected: spinRejected } = await createSpinoffs(output.spinoffs, {
+      allowed,
+      projects: context.projects || []
+    });
+    for (const s of created) console.log(`spinoff: created #${s.number} "${s.title}" from #${s.parent}`);
+    for (const r of spinRejected) console.log(`::warning::spinoff rejected: ${r}`);
+  } catch (e) {
+    // Same reasoning as the bench: a side mechanism must never cost the night's actual work.
+    console.error(`spinoff: could not create (${e.message}) — continuing`);
   }
 
   const entries = Array.isArray(output.comments) ? output.comments : [];

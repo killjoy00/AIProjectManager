@@ -206,7 +206,12 @@ async function build(env) {
       title: p.title, url: p.url, number: p.number, days: p.daysSinceUpdate
     })),
     ...projects.filter((p) => p.labels.includes("spike:done")).map((p) => ({
-      kind: "gate", label: "Spike done — comment /build to proceed",
+      kind: p.labels.includes("spinoff") ? "spinoff" : "gate",
+      // A spinoff is a different ask from a finished spike: the agent is telling you the approval
+      // you already gave doesn't stretch to cover this, and wants a separate yes or no.
+      label: p.labels.includes("spinoff")
+        ? "Split off an approved project — approve /build or close it"
+        : "Spike done — comment /build to proceed",
       title: p.title, url: p.url, number: p.number, days: p.daysSinceUpdate
     })),
     ...openPRs.filter((p) => !p.draft).map((p) => ({

@@ -1,7 +1,8 @@
 // Builds .agent/context.json for the nightly triage and Monday brief agents.
 //
 // SECURITY: this repo is public, so anyone can open an issue or leave a comment. Two rules:
-//   1. Only issues authored by the repo owner become *projects*. Nothing else is ever acted on.
+//   1. Only issues authored by the repo owner become *projects* — plus spinoffs this system filed
+//      itself, identified by a label the public cannot apply. Nothing else is ever acted on.
 //   2. Comments from anyone other than the owner are emitted under `untrustedComments` and are
 //      explicitly labelled as data, never instructions.
 // The model receives this file and nothing else. It holds no credentials.
@@ -14,6 +15,7 @@ import {
   TRIAGE_MARKER, BRIEF_MARKER
 } from "./lib/github.mjs";
 import { readBench } from "./lib/bench.mjs";
+import { SPINOFF_LABEL } from "./lib/spinoff.mjs";
 
 const OUT_DIR = ".agent";
 const MAX_BODY = 12000;      // per-field cap, keeps context bounded
@@ -57,8 +59,19 @@ async function repoActivity(fullName) {
 async function main() {
   const all = await listOpenIssues();
 
-  const ownerProjects = all.filter((i) => isProjectIssue(i) && isOwner(i.user?.login));
-  const foreignIssues = all.filter((i) => isProjectIssue(i) && !isOwner(i.user?.login));
+  // The author filter exists to stop a stranger's issue from becoming a project on a public repo.
+  // Spinoffs are the one legitimate exception: this system files them itself, via post-triage,
+  // after validating the parent against the same allowlist — so they are bot-authored but not
+  // untrusted. Without the exception they would land in foreignIssues marked "do not act on
+  // this", and a spinoff the owner had explicitly approved could never be worked.
+  //
+  // The `spinoff` label is what makes this safe to key on: applying a label needs write access to
+  // the repo, so a member of the public opening an issue cannot forge one.
+  const isSpinoff = (i) => labelsOf(i).includes(SPINOFF_LABEL);
+  const trusted = (i) => isOwner(i.user?.login) || isSpinoff(i);
+
+  const ownerProjects = all.filter((i) => isProjectIssue(i) && trusted(i));
+  const foreignIssues = all.filter((i) => isProjectIssue(i) && !trusted(i));
   const briefs = all.filter(isBriefIssue);
 
   const projects = [];
