@@ -74,6 +74,11 @@ async function repoActivity(env, fullName) {
       fullName,
       lastPush: repo.pushed_at,
       daysSincePush: daysSince(repo.pushed_at),
+      // A default branch that isn't `main` means a plain `git clone` — by a person or an agent —
+      // silently checks out the wrong code. It cost a night of agent analysis against a stale
+      // branch before anyone noticed, so it belongs on the dashboard rather than in a log.
+      defaultBranch: repo.default_branch,
+      defaultBranchDrift: repo.default_branch !== "main",
       openPRs: (pulls || []).map((p) => ({
         number: p.number, title: p.title, draft: p.draft, url: p.html_url, updatedAt: p.updated_at
       }))
@@ -215,6 +220,13 @@ async function build(env) {
     ...projects.filter((p) => p.reviewOverdue).map((p) => ({
       kind: "review", label: "Kill criteria due for review (set " + p.reviewBy + ")",
       title: p.title, url: p.url, number: p.number, days: daysSince(p.reviewBy)
+    })),
+    ...repos.filter((r) => r.defaultBranchDrift).map((r) => ({
+      kind: "branch",
+      label: `Default branch is "${r.defaultBranch}", not main — clones get the wrong code`,
+      title: r.fullName,
+      url: `https://github.com/${r.fullName}/settings`,
+      days: null
     }))
   ];
 
