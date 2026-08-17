@@ -334,6 +334,11 @@
   <div class="cols">
     <div>
       <div class="panel">
+        <div class="ptitle">Portfolio status <span class="pcount" id="boardAge">—</span></div>
+        <div id="board"></div>
+      </div>
+
+      <div class="panel">
         <div class="ptitle">Waiting on you <span class="pcount" id="wCount">0</span></div>
         <div id="waiting"></div>
       </div>
@@ -525,8 +530,12 @@
     el.className = "health " + (h.state || "down");
     var titles = { ok: "Machine is running", stale: "Machine may have stopped", down: "Machine is down" };
     var meta = [];
-    if (h.nightly) meta.push("nightly: " + ago(h.nightly.at));
-    if (h.brief) meta.push("brief: " + ago(h.brief.at));
+    // h.sweep is the current field; h.nightly is the alias kept for a cached copy of this page
+    // meeting a newer Function, or vice versa. Read whichever is present.
+    var sweep = h.sweep || h.nightly;
+    var lastRun = h.lastSweepRun || h.lastNightlyRun;
+    if (sweep) meta.push("sweep: " + ago(sweep.at));
+    if (h.checkin) meta.push("check-in: " + ago(h.checkin.at));
     if (data && data.generated) meta.push("data: " + ago(data.generated));
 
     el.innerHTML =
@@ -535,11 +544,11 @@
       '<div class="hmsg">' + esc(h.message || "") + '</div>' +
       // .hmeta is a flex row with gaps — the items belong inside one, as spans. Closing and
       // reopening the div per item stacked them into separate rows instead.
-      (meta.length || (h.lastNightlyRun && h.lastNightlyRun.url)
+      (meta.length || (lastRun && lastRun.url)
         ? '<div class="hmeta">' +
           meta.map(function (m) { return "<span>" + esc(m) + "</span>"; }).join("") +
-          (h.lastNightlyRun && h.lastNightlyRun.url
-            ? '<span><a href="' + esc(h.lastNightlyRun.url) + '" target="_blank" rel="noreferrer">last run log ↗</a></span>'
+          (lastRun && lastRun.url
+            ? '<span><a href="' + esc(lastRun.url) + '" target="_blank" rel="noreferrer">last run log ↗</a></span>'
             : "") +
           '</div>'
         : "") +
@@ -635,13 +644,39 @@
         'the agent is running but finding nothing to work on.</div>';
   }
 
+  // The status board. Rendered here rather than left on GitHub because it is the manager's main
+  // output now — the manager finds problems, the owner routes them to a build session, and this is
+  // where they see what there is to route.
+  function renderBoard() {
+    var b = data && data.board;
+    var age = $("boardAge");
+
+    if (!b) {
+      age.textContent = "—";
+      age.className = "pcount zero";
+      $("board").innerHTML = '<div class="empty">No status board yet. The Sunday sweep creates it ' +
+        'on its first run.</div>';
+      return;
+    }
+
+    age.textContent = b.updatedAt ? ago(b.updatedAt) : "—";
+    age.className = "pcount" + (b.markdown ? "" : " zero");
+
+    $("board").innerHTML = b.markdown
+      ? '<div class="md" style="padding-top:6px">' + md(b.markdown) + '</div>' +
+        '<div style="font-size:12px;color:var(--muted);margin-top:10px">' +
+        '<a href="' + esc(b.url) + '" target="_blank" rel="noreferrer">Board on GitHub ↗</a></div>'
+      : '<div class="empty">The board exists but has never been written. If the machine is green ' +
+        'and this stays empty, the sweep is running but producing no status — check the run log.</div>';
+  }
+
   function renderBrief() {
     var b = data && data.latestBrief;
     $("brief").innerHTML = b
       ? '<div style="padding-top:10px"><a href="' + esc(b.url) + '" target="_blank" rel="noreferrer" ' +
         'style="font-size:14px;font-weight:600;text-decoration:none">' + esc(b.title) + ' ↗</a>' +
         '<div style="font-size:12px;color:var(--muted);margin-top:4px">Posted ' + esc(ago(b.at)) + '</div></div>'
-      : '<div class="empty">No brief yet. The first one posts Monday at 07:00 CT.</div>';
+      : '<div class="empty">No brief yet. The first one posts Sunday night, after the sweep.</div>';
   }
 
   var prs = [];
@@ -672,7 +707,7 @@
   }
 
   // The bench is the one panel that exists to collect input rather than report state. The
-  // nightly agent distils these reactions into the "learned about your taste" section and picks
+  // sweep distils these reactions into the "learned about your taste" section and picks
   // against it next run, so a bench nobody reacts to gets no better — which is why the reactions
   // are one tap and live here rather than on GitHub.
   var REACTS = [
@@ -713,12 +748,12 @@
     c.className = "pcount" + (ideas.length === 0 ? " zero" : "");
 
     if (!b) {
-      $("bench").innerHTML = '<div class="empty">No idea bench yet. The nightly agent creates it ' +
+      $("bench").innerHTML = '<div class="empty">No idea bench yet. The Sunday sweep creates it ' +
         'on its first run.</div>';
       return;
     }
     if (!ideas.length) {
-      $("bench").innerHTML = '<div class="empty">Bench is empty. The nightly agent adds ideas ' +
+      $("bench").innerHTML = '<div class="empty">Bench is empty. The Sunday sweep adds ideas ' +
         'each run; the Monday brief surfaces the best of them.</div>';
       return;
     }
@@ -790,7 +825,7 @@
     })
       .then(function () {
         if (mark) markSent(mark.title, mark.label);
-        benchSay("Sent ✓ — the next nightly run reads this.");
+        benchSay("Sent ✓ — the next Sunday sweep reads this.");
         var box = $("benchIn");
         if (box) box.value = "";
         renderBench();
@@ -907,6 +942,7 @@
     if (!data) return;
     if (data.repo) $("repoLink").href = "https://github.com/" + data.repo + "/issues";
     renderHealth();
+    renderBoard();
     renderWaiting();
     renderStalled();
     renderProjects();

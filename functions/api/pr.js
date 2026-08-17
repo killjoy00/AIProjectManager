@@ -24,7 +24,7 @@ const MERGE_METHODS = ["squash", "merge", "rebase"];
 const bustCache = (env) =>
   env.IDEAS_KV ? env.IDEAS_KV.delete("dashboard:cache").catch(() => {}) : Promise.resolve();
 
-// Only repositories owned by GH_OWNER. Same rule the nightly agent's clone step enforces —
+// Only repositories owned by GH_OWNER. Same rule the sweep's clone step enforces —
 // stated once here so every write below inherits it.
 function resolveRepo(env, raw) {
   const fallback = `${ghOwner(env)}/${ghRepo(env)}`;

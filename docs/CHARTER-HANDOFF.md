@@ -84,5 +84,5 @@ Do not commit anything or open a PR. Just give me the block.
 1. Paste it into the project's issue body in this repo
 2. Sanity-check the kill criteria — if they are still the other session's proposal, either replace
    them with your own numbers or leave the `Review kill criteria by` date to force the decision
-3. Set the label to `active` when you want the nightly agent working it
+3. Set the label to `active` when you want the weekly sweep tracking it
 4. Check the portfolio cap: at most 10 issues may hold `active` or `hot`

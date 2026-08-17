@@ -1,0 +1,150 @@
+name: portfolio-checkin
+
+# The light midweek runs, Wednesday and Friday. Narrow job: catch what changed since Sunday, and
+# get a handoff packet out for anything the owner approved midweek so it doesn't wait until the
+# next sweep.
+#
+# Deliberately *not* a small sweep:
+#   * no project source is fetched — reading four codebases is Sunday's job, and doing it badly
+#     midweek is how you get a confident wrong answer
+#   * no status-board rewrite, no ideas, no spinoffs — all of those need the source reading
+#   * posting nothing is a success, not a failure
+#
+# Same three-stage credential split as the sweep: the agent never holds a token.
+
+on:
+  schedule:
+    # 02:17 US Central Wednesday and Friday — findings are in place before the owner's day starts.
+    # Cron is UTC and 02:17 CT is 07:17 UTC the same date, so the day-of-week needs no shift here
+    # (unlike the sweep, which runs at night and lands on the following UTC day).
+    # :17 rather than :00 — GitHub delays scheduled runs under load and the top of the hour is the
+    # most contended minute; their own docs recommend scheduling off it.
+    - cron: "17 7 * * 3"      # Wed 02:17 CT
+    - cron: "17 7 * * 5"      # Fri 02:17 CT
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "dry_run — run the agent, print what it would post, post nothing (safe test)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: portfolio-checkin
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+jobs:
+  checkin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15   # no clone, one short agent stage
+    env:
+      GH_OWNER: ${{ github.repository_owner }}
+      GH_REPO: ${{ github.event.repository.name }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Collect context
+        env:
+          GH_API_TOKEN: ${{ secrets.GH_API_TOKEN }}
+        run: node scripts/collect-context.mjs
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      # See the note in portfolio-sweep.yml — a copied-out token often carries a line wrap.
+      - name: Normalize agent credential
+        env:
+          RAW_OAUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          RAW_APIKEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          normalize () {
+            raw="$2"
+            [ -z "$raw" ] && return 0
+            clean=$(printf '%s' "$raw" | tr -d '[:space:]')
+            echo "::add-mask::$clean"
+            echo "$1=$clean" >> "$GITHUB_ENV"
+            if [ "${#clean}" -ne "${#raw}" ]; then
+              echo "::warning::$1 contained whitespace (likely a line wrap when it was copied)." \
+                   "Using the stripped value. Consider re-pasting it as one unbroken line."
+            fi
+          }
+          normalize CLAUDE_CODE_OAUTH_TOKEN "$RAW_OAUTH"
+          normalize ANTHROPIC_API_KEY       "$RAW_APIKEY"
+          if [ -z "$RAW_OAUTH" ] && [ -z "$RAW_APIKEY" ]; then
+            echo "::error::No agent credential set. Add CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY."
+            exit 1
+          fi
+
+      # No `env:` here on purpose — credentials arrive from the normalize step via GITHUB_ENV.
+      - name: Run check-in agent
+        run: |
+          set -o pipefail
+          claude -p "$(cat docs/prompts/checkin.md)" \
+            --allowedTools "Read,Write,Edit,Glob,Grep,WebSearch,WebFetch" \
+            --permission-mode acceptEdits \
+            --max-turns 30 \
+            --output-format text \
+            2>&1 | tee .agent/agent.log
+
+      # An empty `comments` array is a legitimate result here, but no file at all still means the
+      # agent failed — it is required to write the file and record why it had nothing to say.
+      - name: Verify the agent produced output
+        run: |
+          if [ ! -s .agent/sweep.json ]; then
+            echo "::error::Agent did not write .agent/sweep.json — treating as a failed run."
+            exit 1
+          fi
+          node -e "JSON.parse(require('fs').readFileSync('.agent/sweep.json','utf8'))" \
+            || { echo "::error::.agent/sweep.json is not valid JSON"; exit 1; }
+
+      - name: Post check-in
+        if: ${{ !inputs.dry_run }}
+        env:
+          RUN_MODE: checkin
+        run: node scripts/post-sweep.mjs
+
+      - name: Dry run notice
+        if: ${{ inputs.dry_run }}
+        run: |
+          echo "::notice::Dry run — nothing posted. Check-in output:"
+          cat .agent/sweep.json
+
+      - name: Heartbeat
+        if: success() && !inputs.dry_run
+        env:
+          HEARTBEAT_URL: ${{ vars.HEARTBEAT_URL }}
+          HEARTBEAT_SECRET: ${{ secrets.HEARTBEAT_SECRET }}
+          HEARTBEAT_JOB: portfolio-checkin
+        run: node scripts/heartbeat.mjs
+
+      - name: Upload run artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkin-${{ github.run_id }}
+          path: .agent/
+          retention-days: 14
+          if-no-files-found: warn
+          include-hidden-files: true
+
+      - name: Report failure
+        if: failure()
+        env:
+          FAILED_JOB: portfolio-checkin
+          # A check-in has no fallback attempt, and a spent Claude usage window clears by itself.
+          # Setting this false means quota exhaustion here does NOT file a blocked:human issue —
+          # that label has to keep meaning "a human is actually needed", and losing one light run
+          # needs no human. Real failures (a missing secret, a broken script) still file, because
+          # report-failure.mjs only suppresses failures whose log looks like quota exhaustion.
+          # Repeated quota failures still surface: §5 of the weekly brief lists every failed run.
+          IS_LAST_ATTEMPT: "false"
+        run: node scripts/report-failure.mjs

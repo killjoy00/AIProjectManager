@@ -8,11 +8,12 @@
     "node": ">=20"
   },
   "scripts": {
+    "test": "node scripts/selftest.mjs",
     "labels": "node scripts/setup-labels.mjs",
     "context": "node scripts/collect-context.mjs",
     "portfolio": "node scripts/portfolio-check.mjs",
     "metrics": "node scripts/collect-metrics.mjs",
-    "post-triage": "node scripts/post-triage.mjs",
+    "post-sweep": "node scripts/post-sweep.mjs",
     "post-brief": "node scripts/post-brief.mjs",
     "heartbeat": "node scripts/heartbeat.mjs",
     "deploy": "wrangler pages deploy public --project-name=$CF_PAGES_PROJECT",

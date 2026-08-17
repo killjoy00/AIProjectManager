@@ -1,0 +1,274 @@
+name: portfolio-sweep
+
+# The Sunday-night deep run. The most important output of the system, and the only run that reads
+# project source.
+#
+# Two agent stages in one run, back to back:
+#   1. the sweep      -> assesses every active project, writes .agent/sweep.json
+#   2. the brief      -> reads that assessment while it is minutes old, writes .agent/brief.json
+# Running them together is why the brief can cite evidence: the sweep had the source and passed
+# its findings straight across, rather than the brief re-deriving them from issue comments.
+#
+# The agent holds NO credentials at any stage:
+#   collect-context.mjs (has a token) -> claude (no token, no Bash) -> post-*.mjs (has a token)
+# So "comment-only" is structural, not a promise in a prompt.
+
+on:
+  schedule:
+    # 21:17 US Central Sunday. Cron is UTC, so Sunday night Central is *Monday* in UTC — hence
+    # day-of-week 1, not 0. Getting this wrong fires the sweep a day early, every week, silently.
+    # Anchored to CDT (UTC-5); Nov–Mar it lands an hour earlier. Harmless — by design nothing in
+    # this system is time-sensitive.
+    - cron: "17 2 * * 1"      # Sun 21:17 CT — primary
+    # Second attempt five hours later, in a different Claude usage window. Subscription usage
+    # refreshes on a roughly five-hour cycle; when a window is spent the CLI exits with "You've hit
+    # your org's monthly spend limit", a known misnomer for an exhausted window that clears by
+    # itself. The sweep runs weekly, so one spent window must not cost the whole week.
+    # No-ops when the primary succeeded (should-run-sweep.mjs, fails OPEN).
+    - cron: "33 7 * * 1"      # Mon 02:33 CT — fallback
+  workflow_dispatch:
+    inputs:
+      # GitHub renders the description, not the input name, so each one names itself.
+      stage:
+        description: "stage — which agent stages to run"
+        type: choice
+        default: both
+        options: [both, sweep, brief]
+      dry_run:
+        description: "dry_run — run the agents, print what they would post, post nothing (safe test)"
+        type: boolean
+        default: false
+      simulate_failure:
+        description: "simulate_failure — deliberately fail, to check the alert fires (leaves an issue)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: portfolio-sweep
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+jobs:
+  # Cheap gate so the fallback window costs a few seconds when the primary already worked.
+  # A skipped job shows as skipped rather than failed, so it never muddies the health signal.
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.check.outputs.run }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - id: check
+        env:
+          GH_OWNER: ${{ github.repository_owner }}
+          GH_REPO: ${{ github.event.repository.name }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+        run: node scripts/should-run-sweep.mjs
+
+  sweep:
+    needs: guard
+    if: needs.guard.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    # Two agent stages plus repo fetching. A run that hits this is reported as truncated, not
+    # silent.
+    timeout-minutes: 40
+    env:
+      GH_OWNER: ${{ github.repository_owner }}
+      GH_REPO: ${{ github.event.repository.name }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # `both` for any scheduled run; the dispatch input only narrows it.
+      STAGE: ${{ github.event_name == 'schedule' && 'both' || inputs.stage || 'both' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Simulate failure (test the alerting path)
+        if: inputs.simulate_failure
+        run: |
+          echo "Deliberate failure requested via workflow_dispatch."
+          echo "This exercises the heartbeat guarantee: a broken run must not be silent."
+          exit 1
+
+      - name: Collect context
+        env:
+          GH_API_TOKEN: ${{ secrets.GH_API_TOKEN }}
+        run: node scripts/collect-context.mjs
+
+      - name: Enforce portfolio cap
+        run: node scripts/portfolio-check.mjs
+
+      # Measured, not authored — §5 of the brief is injected from this so spend cannot be invented.
+      - name: Collect metrics
+        run: node scripts/collect-metrics.mjs
+
+      # Give the agent the actual source of each active project. Metadata alone (last push, PR
+      # count) is not enough to find real problems, and an agent guessing at a codebase it cannot
+      # see produces exactly the confident, plausible garbage CLAUDE.md warns about. This is the
+      # step that makes the sweep's findings citable — see docs/FAILURE-MODES.md.
+      - name: Fetch project repos
+        if: env.STAGE != 'brief'
+        env:
+          GH_API_TOKEN: ${{ secrets.GH_API_TOKEN }}
+        run: node scripts/fetch-project-repos.mjs
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      # Copying a token out of a terminal often brings a line wrap with it, and the credential
+      # then arrives containing a newline. That produces a baffling
+      # `Header 'Authorization' has invalid value` and nothing else. Credentials never contain
+      # whitespace, so stripping it is safe and turns a dead run into a working one.
+      - name: Normalize agent credential
+        env:
+          RAW_OAUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          RAW_APIKEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          normalize () {  # $1 = secret name, $2 = raw value
+            raw="$2"
+            [ -z "$raw" ] && return 0
+            clean=$(printf '%s' "$raw" | tr -d '[:space:]')
+            # Re-mask the cleaned form; the original mask does not cover it.
+            echo "::add-mask::$clean"
+            echo "$1=$clean" >> "$GITHUB_ENV"
+            if [ "${#clean}" -ne "${#raw}" ]; then
+              echo "::warning::$1 contained whitespace (likely a line wrap when it was copied)." \
+                   "Using the stripped value. Consider re-pasting it as one unbroken line."
+            fi
+          }
+          normalize CLAUDE_CODE_OAUTH_TOKEN "$RAW_OAUTH"
+          normalize ANTHROPIC_API_KEY       "$RAW_APIKEY"
+          if [ -z "$RAW_OAUTH" ] && [ -z "$RAW_APIKEY" ]; then
+            echo "::error::No agent credential set. Add CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY."
+            exit 1
+          fi
+
+      # ── Stage 1: the sweep ──────────────────────────────────────────────────────────────────
+      # No Bash, no gh, no credentials in the environment. The model can read the repo and the
+      # project checkouts, and write its output file — nothing else.
+      # No `env:` here on purpose: the credentials come from the normalize step via GITHUB_ENV.
+      # A step-level `env:` would override those with the raw, possibly newline-bearing values.
+      - name: Run sweep agent
+        if: env.STAGE != 'brief'
+        run: |
+          # pipefail: without it the pipeline reports tee's status, so a failing `claude`
+          # would surface later as the confusing "agent did not write sweep.json".
+          set -o pipefail
+          claude -p "$(cat docs/prompts/portfolio-sweep.md)" \
+            --allowedTools "Read,Write,Edit,Glob,Grep,WebSearch,WebFetch" \
+            --permission-mode acceptEdits \
+            --max-turns 60 \
+            --output-format text \
+            2>&1 | tee .agent/sweep-agent.log
+
+      - name: Verify the sweep produced output
+        if: env.STAGE != 'brief'
+        run: |
+          if [ ! -s .agent/sweep.json ]; then
+            echo "::error::Agent did not write .agent/sweep.json — treating as a failed run."
+            exit 1
+          fi
+          node -e "JSON.parse(require('fs').readFileSync('.agent/sweep.json','utf8'))" \
+            || { echo "::error::.agent/sweep.json is not valid JSON"; exit 1; }
+
+      - name: Post sweep
+        if: ${{ env.STAGE != 'brief' && !inputs.dry_run }}
+        env:
+          RUN_MODE: sweep
+        run: node scripts/post-sweep.mjs
+
+      - name: Dry run notice — sweep
+        if: ${{ env.STAGE != 'brief' && inputs.dry_run }}
+        run: |
+          echo "::notice::Dry run — nothing posted. Sweep output:"
+          cat .agent/sweep.json
+
+      # ── Stage 2: the brief ──────────────────────────────────────────────────────────────────
+      # Reads .agent/sweep.json from stage 1. A separate `claude` invocation rather than one merged
+      # prompt, so post-brief.mjs keeps owning the brief's structure: `drive` as a single object,
+      # §5 injected from metrics, the renderer's caps. Those are enforced code, not prompt wording.
+      - name: Run brief agent
+        if: env.STAGE != 'sweep'
+        run: |
+          set -o pipefail
+          claude -p "$(cat docs/prompts/weekly-brief.md)" \
+            --allowedTools "Read,Write,Edit,Glob,Grep,WebSearch,WebFetch" \
+            --permission-mode acceptEdits \
+            --max-turns 50 \
+            --output-format text \
+            2>&1 | tee .agent/brief-agent.log
+
+      - name: Verify the brief produced output
+        if: env.STAGE != 'sweep'
+        run: |
+          if [ ! -s .agent/brief.json ]; then
+            echo "::error::Agent did not write .agent/brief.json — treating as a failed run."
+            exit 1
+          fi
+          node -e "
+            const b = JSON.parse(require('fs').readFileSync('.agent/brief.json','utf8'));
+            if (Array.isArray(b.drive)) {
+              console.error('::error::drive must be a single object, not a list. The spec says exactly one.');
+              process.exit(1);
+            }
+            if (!b.drive || typeof b.drive !== 'object') {
+              console.error('::error::brief.json has no drive object');
+              process.exit(1);
+            }
+          "
+
+      - name: Post brief
+        if: ${{ env.STAGE != 'sweep' && !inputs.dry_run }}
+        run: node scripts/post-brief.mjs
+
+      - name: Dry run — render the brief without posting
+        if: ${{ env.STAGE != 'sweep' && inputs.dry_run }}
+        env:
+          DRY_RUN: "true"
+        run: node scripts/post-brief.mjs
+
+      # `report-failure.mjs` reads this to tell a spent usage window from a real break.
+      - name: Merge agent logs
+        if: always()
+        run: cat .agent/sweep-agent.log .agent/brief-agent.log > .agent/agent.log 2>/dev/null || true
+
+      - name: Heartbeat
+        if: success() && !inputs.dry_run
+        env:
+          HEARTBEAT_URL: ${{ vars.HEARTBEAT_URL }}
+          HEARTBEAT_SECRET: ${{ secrets.HEARTBEAT_SECRET }}
+          HEARTBEAT_JOB: portfolio-sweep
+        run: node scripts/heartbeat.mjs
+
+      - name: Upload run artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sweep-${{ github.run_id }}
+          path: .agent/
+          retention-days: 30
+          if-no-files-found: warn
+          # .agent is dot-prefixed, so without this the upload silently finds nothing and the
+          # debugging artifacts the runbook points at would always be empty.
+          include-hidden-files: true
+
+      # Silence is never ambiguous: any failure above leaves a blocked:human issue behind.
+      - name: Report failure
+        if: failure()
+        env:
+          FAILED_JOB: portfolio-sweep
+          # Only the week's final attempt escalates a spent usage window to a blocked:human issue.
+          # github.event.schedule names the cron that fired, so this is exact rather than inferred
+          # from the clock. A manual dispatch is always treated as final.
+          IS_LAST_ATTEMPT: ${{ github.event_name != 'schedule' || github.event.schedule == '33 7 * * 1' }}
+        run: node scripts/report-failure.mjs

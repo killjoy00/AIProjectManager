@@ -1,4 +1,4 @@
-// Renders and posts the Monday brief from .agent/brief.json.
+// Renders and posts the weekly brief from .agent/brief.json.
 //
 // The renderer — not the model — owns the structure. That is deliberate:
 //   * `drive` is a single object, so "exactly one project, never a ranked list of three" is
@@ -9,6 +9,7 @@
 
 import { readFile, writeFile } from "node:fs/promises";
 import { createIssue, BRIEF_MARKER } from "./lib/github.mjs";
+import { findStatus } from "./lib/status.mjs";
 
 const MAX_QUEUE = 5;
 const MAX_NOTABLE = 4;
@@ -109,8 +110,8 @@ function renderIdeas(ideas, warnings) {
     // The owner asked for this section never to come back empty, so an empty one is a gap in
     // the brief rather than a legitimate "nothing this week".
     warnings.push("no ideas surfaced — the brief is required to pick at least one from the bench");
-    return "_No ideas were surfaced. The bench accumulates nightly, so this is a gap in the " +
-      "brief rather than an empty bench — check the run log._";
+    return "_No ideas were surfaced. The bench carries several weeks of them, so this is a gap in " +
+      "the brief rather than an empty bench — check the run log._";
   }
   if (ideas.length > MAX_IDEAS) {
     warnings.push(`idea bench offered ${ideas.length}; kept the first ${MAX_IDEAS}`);
@@ -146,24 +147,41 @@ function renderSpend(metrics) {
   return lines.join("\n");
 }
 
+// The brief is written by stage 2 of the sweep, so the run reporting its own health is the run in
+// progress. What this line is actually for is catching a *previous* week that never happened —
+// hence a threshold of days, not hours.
 function renderHealth(metrics, health) {
   const last = metrics?.lastRunByWorkflow || {};
-  const nightly = Object.entries(last).find(([n]) => /triage/i.test(n))?.[1];
+  // Match the old workflow name too: the metrics window can still contain nightly-triage runs for
+  // a week after the rename, and treating those as "not found" would report a false red.
+  const sweep = Object.entries(last).find(([n]) => /sweep|triage/i.test(n))?.[1];
+  const checkin = Object.entries(last).find(([n]) => /checkin|check-in/i.test(n))?.[1];
 
-  if (!nightly) {
-    return "🔴 **Machine health:** no nightly triage run found in the metrics window. " +
+  if (!sweep) {
+    return "🔴 **Machine health:** no portfolio sweep found in the metrics window. " +
       "The system may not be running at all — check the Actions tab.";
   }
   // Clamp: clock skew between the runner and this process can otherwise print "-1d ago".
-  const days = Math.max(0, Math.floor((Date.now() - new Date(nightly.at).getTime()) / 86400000));
-  if (nightly.conclusion !== "success") {
-    return `🔴 **Machine health:** last nightly run ${nightly.conclusion} (${days}d ago). [Log](${nightly.url})`;
+  const days = Math.max(0, Math.floor((Date.now() - new Date(sweep.at).getTime()) / 86400000));
+  if (sweep.conclusion !== "success") {
+    return `🔴 **Machine health:** last sweep ${sweep.conclusion} (${days}d ago). [Log](${sweep.url})`;
   }
-  if (days > 2) {
-    return `🟠 **Machine health:** last successful nightly run was ${days} days ago — it should run daily.`;
+  // 8 days: one weekly cycle plus slack for a late scheduled run or a fallback attempt.
+  if (days > 8) {
+    return `🟠 **Machine health:** last successful sweep was ${days} days ago — it should run every Sunday.`;
   }
-  const base = `🟢 **Machine health:** nightly triage ran successfully ${days === 0 ? "today" : `${days}d ago`}.`;
-  return health ? `${base} ${String(health)}` : base;
+
+  const base = `🟢 **Machine health:** sweep ran successfully ${days === 0 ? "today" : `${days}d ago`}.`;
+  const parts = [base];
+  // A silently dead check-in is invisible otherwise: it files no blocked:human issue for quota
+  // failures by design, so the weekly brief is the only place it surfaces.
+  if (checkin && checkin.conclusion !== "success") {
+    parts.push(`Last mid-week check-in ${checkin.conclusion} — [log](${checkin.url}).`);
+  } else if (!checkin) {
+    parts.push("No mid-week check-in ran this week.");
+  }
+  if (health) parts.push(String(health));
+  return parts.join(" ");
 }
 
 async function main() {
@@ -204,7 +222,7 @@ async function main() {
     "",
     renderIdeas(brief.ideas, warnings),
     "",
-    `<sub>Nightly picks; this is the week's best of them. Not tasks — ignore freely. ` +
+    `<sub>Proposed by the sweep; this is the best of them. Not tasks — ignore freely. ` +
       `Full bench: ${benchLink(context)}</sub>`,
     ""
   ];
@@ -212,9 +230,15 @@ async function main() {
   if (warnings.length) {
     sections.push("---", "", `<sub>⚠️ Brief-quality warnings: ${warnings.join("; ")}.</sub>`, "");
   }
+  // The board is the standing "where is everything" view; the brief is "what to do about it".
+  // Linking them means the owner never has to remember which issue holds which.
+  const board = await findStatus().catch(() => null);
+  if (board) {
+    sections.push(`<sub>Current state of every project: #${board.number}.</sub>`);
+  }
   sections.push(
-    `<sub>Generated by the Monday brief workflow. Structure enforced by \`scripts/post-brief.mjs\` ` +
-      `against \`docs/WEEKLY-BRIEF.md\`.</sub>`
+    `<sub>Generated by stage 2 of the Sunday portfolio sweep. Structure enforced by ` +
+      `\`scripts/post-brief.mjs\` against \`docs/WEEKLY-BRIEF.md\`.</sub>`
   );
 
   const body = sections.join("\n");
