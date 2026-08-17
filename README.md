@@ -1,30 +1,48 @@
 # AI Project Manager
 
-Control plane for a portfolio of small personal software projects. GitHub issues are the system
-of record; scheduled agents do the volume work; a weekly brief directs the owner's limited
-attention. The projects themselves live in their own repos — this one holds issues, workflows,
-and the dashboard.
+Control plane for a portfolio of small personal software projects. GitHub issues are the system of
+record; a scheduled agent tracks state and finds problems; a weekly brief directs the owner's
+limited attention. The projects themselves live in their own repos — this one holds issues,
+workflows, and the dashboard.
+
+**This manager does not write code.** It reads every active project, says what is wrong with cited
+evidence, and packages approved work as a *handoff packet* — a self-contained block the owner
+pastes into a separate Claude Code session that has credentials and opens the PR. Finding the work
+and doing the work are deliberately different jobs held by different sessions.
 
 Operating rules for agents: [`CLAUDE.md`](CLAUDE.md).
 Setup and day-two ops: [`docs/RUNBOOK.md`](docs/RUNBOOK.md).
+How this has gone wrong before: [`docs/FAILURE-MODES.md`](docs/FAILURE-MODES.md).
 
 ## How it works
 
 ```
-        ┌──────────────────────────────────────────────┐
-        │  GitHub issues in this repo = system of record│
-        │  one issue per project, labels carry status   │
-        └───────────────┬──────────────────────────────┘
+        ┌───────────────────────────────────────────────┐
+        │  GitHub issues in this repo = system of record │
+        │  one issue per project, labels carry status    │
+        └───────────────┬───────────────────────────────┘
                         │
-     ┌──────────────────┼───────────────────┐
-     │                  │                   │
- nightly triage    Monday brief      dashboard (Pages)
- 02:00 CT daily    07:00 CT Mon      ideas.planitnow.us
-     │                  │                   │
- one unit of work   THE DRIVE +        shows the machine:
- per active project decision queue     health, what's waiting
- posted as a        posted as an       on you, portfolio load,
- issue comment      issue              stalled work, spend
+     ┌──────────────────┼────────────────────┐
+     │                  │                    │
+ portfolio-sweep   portfolio-checkin   dashboard (Pages)
+ Sun 21:17 CT      Wed + Fri 02:17 CT  ideas.planitnow.us
+     │                  │                    │
+ reads every       catches what         shows the machine:
+ active project's  changed; posts       status board, health,
+ source; writes    nothing when         what's waiting on you,
+ the status board  nothing did          portfolio load, spend
+ + weekly brief         │
+     │                  │
+     └────────┬─────────┘
+              │
+      on an approved issue: a handoff packet
+              │
+              ▼
+   you paste it into a Claude Code session
+   that has credentials → it opens a PR
+              │
+              ▼
+        you review and merge
 ```
 
 ## Status labels
@@ -39,7 +57,8 @@ Setup and day-two ops: [`docs/RUNBOOK.md`](docs/RUNBOOK.md).
 | `spike:done` | Spike finished, awaiting your `/build` comment to cross the gate. |
 | `blocked:human` | Agent stopped; needs a judgment only you can make. Also used for system failures. |
 | `brief` | A weekly brief issue. |
-| `system` | Machine-generated housekeeping (failures, portfolio-cap warnings). |
+| `system` | Machine-generated housekeeping (status board, idea bench, failures, cap warnings). |
+| `spinoff` | Work split off an approved project because the approval didn't cover it. Needs its own `/build`. |
 
 **Hard cap: 10 issues may hold `active` or `hot` at once.** `scripts/portfolio-check.mjs`
 enforces this and files a `blocked:human` issue when you go over.
@@ -59,14 +78,14 @@ project is not ready to leave `background`.
 ## Gates
 
 1. Idea → spike — automatic.
-2. Spike → build — **you comment `/build`**.
+2. Spike → build — **you comment `/build`**. That authorises a handoff packet, which the next run
+   posts on the issue. Nothing is built until you hand that packet to a build session.
 3. Build → merge — **you review the PR**. Never self-merged.
 4. Merge → deploy — automatic.
 
 ## Security posture
 
-The nightly and Monday agents hold **no write credentials at all**. Each run works in three
-stages:
+The scheduled agents hold **no write credentials at all**. Each run works in three stages:
 
 1. A deterministic script fetches issue data and writes `.agent/context.json`.
 2. Claude Code runs with no `Bash` and no `gh` access, reads that file, and writes a structured

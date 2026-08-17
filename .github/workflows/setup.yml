@@ -78,7 +78,7 @@ jobs:
           check HEARTBEAT_URL            "$HB_URL"
           echo ""
           if [ -z "$CLAUDE_TOKEN" ] && [ -z "$ANTHROPIC_KEY" ]; then
-            echo "::error::No agent credential set — the nightly and brief workflows cannot run."
+            echo "::error::No agent credential set — the sweep and check-in workflows cannot run."
             exit 1
           fi
           echo "$ok present, $bad missing."

@@ -47,7 +47,7 @@ export async function onRequestPost({ request, env }) {
   // possible evidence of what to suggest more of, and it should be legible months later.
   const from = Number(body.fromBench);
   const provenance = Number.isInteger(from) && from > 0
-    ? `Promoted from the idea bench (#${from}) — proposed by the nightly agent.`
+    ? `Promoted from the idea bench (#${from}) — proposed by the portfolio sweep.`
     : null;
 
   // Every project issue carries the machine-readable repo header the agents parse.

@@ -1,7 +1,12 @@
 # Weekly brief spec
 
-Posted every Monday morning as a GitHub issue titled `Weekly brief — [date]`.
-This is the system's most important output. Follow this structure exactly.
+Posted Sunday night as a GitHub issue titled `Weekly brief — [date]`, as stage 2 of the portfolio
+sweep, so it is waiting when the week starts. This is the system's most important output. Follow
+this structure exactly.
+
+Everything below is the spec and is kept verbatim. Where the implementation diverges, that is
+recorded in `docs/RUNBOOK.md` §7 rather than by editing this file. Mechanics for the agent that
+writes it live in `docs/prompts/weekly-brief.md`.
 
 ## Purpose
 Direct the human's limited attention. Not to report status — to say where to spend time,

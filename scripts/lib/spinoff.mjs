@@ -14,16 +14,19 @@
 // in them.
 
 import {
-  OWNER, REPO, gh, createIssue, addComment, listOpenIssues, projectRepoOf
+  OWNER, REPO, gh, createIssue, addComment, listOpenIssues, projectRepoOf, SPINOFF_MARKER
 } from "./github.mjs";
 
-const MAX_PER_RUN = 1;          // one per night. A flood of small issues is its own failure mode.
+// Re-exported so existing importers keep working; the string itself lives in github.mjs with the
+// rest of the markers, because the full set has to be knowable from one place.
+export { SPINOFF_MARKER };
+
+const MAX_PER_RUN = 1;          // one per run. A flood of small issues is its own failure mode.
 const MAX_OUTSTANDING = 3;      // unapproved spinoffs waiting on the owner, across the portfolio
 const MAX_TITLE = 120;
 const MAX_FIELD = 2000;
 
 export const SPINOFF_LABEL = "spinoff";
-export const SPINOFF_MARKER = "<!-- apm:spinoff -->";
 
 const clean = (v, max) => String(v || "").trim().slice(0, max);
 
@@ -36,8 +39,8 @@ function spinoffBody({ parent, parentTitle, repo, why, scope, needsApprovalBecau
     "",
     `**Split off from #${parent} — ${parentTitle}.**`,
     "",
-    "The nightly agent found this while working that project and judged it needed its own",
-    "approval rather than riding along on one already given. This issue exists so it can have one.",
+    "The sweep found this while assessing that project and judged it needed its own approval",
+    "rather than riding along on one already given. This issue exists so it can have one.",
     "",
     "## What it is",
     "",
@@ -49,12 +52,13 @@ function spinoffBody({ parent, parentTitle, repo, why, scope, needsApprovalBecau
       : []),
     "---",
     "",
-    "**To let the agent build it:** approve `/build` on this issue, and set it to `active` so it",
-    "enters the nightly working set. Both controls are in the dashboard panel for this issue.",
+    "**To get it built:** approve `/build` on this issue, and set it to `active` so it enters the",
+    "weekly working set. Both controls are in the dashboard panel for this issue. The next run then",
+    "posts a **handoff packet** here — a block to paste into a Claude Code session that can build it.",
     "",
     "**To decline it:** close this issue. The agent will not re-propose it.",
     "",
-    `<sub>Proposed automatically by nightly triage. Nothing was pushed, and nothing happens until you approve.</sub>`
+    `<sub>Proposed automatically by the portfolio sweep. Nothing was pushed, and nothing happens until you approve.</sub>`
   ].join("\n");
 }
 
@@ -113,7 +117,7 @@ export async function createSpinoffs(spinoffs, { allowed, projects = [] } = {}) 
       continue;
     }
     if (titles.has(title.toLowerCase())) {
-      // Nightly reruns would otherwise file the same issue every night forever.
+      // Reruns would otherwise file the same issue every week forever.
       rejected.push(`"${title}" — an open issue with this title already exists`);
       continue;
     }

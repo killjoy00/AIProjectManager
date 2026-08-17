@@ -16,50 +16,74 @@ const STALE_DAYS = 7;
 const TRIAGE_MARKER = "<!-- apm:triage -->";
 const BRIEF_MARKER = "<!-- apm:brief -->";
 const IDEA_MARKER = "<!-- apm:idea -->";
+const STATUS_TITLE = "📊 Portfolio status";
+const STATUS_START = "<!-- apm:status:start -->";
+const STATUS_END = "<!-- apm:status:end -->";
 const LEARNING_START = "<!-- apm:learning:start -->";
 const LEARNING_END = "<!-- apm:learning:end -->";
 const BENCH_TITLE = "💡 Idea bench";
 
-// A nightly run that hasn't landed in this many hours means something is wrong.
-const NIGHTLY_STALE_HOURS = 30;
+// The sweep is weekly, so "stale" is a week plus slack — GitHub gives no punctuality guarantee for
+// scheduled runs, and the fallback attempt can land hours after the primary. This was 30h when the
+// sweep ran nightly; leaving it there after the move to a weekly cadence would have parked the
+// health strip on amber permanently and taught the owner to ignore it.
+const SWEEP_STALE_HOURS = 8 * 24;
 
 const isBrief = (i) => has(i, "brief");
 const isSystem = (i) => has(i, "system");
 const isProject = (i) => !i.pull_request && !isBrief(i) && !isSystem(i);
 
 function machineHealth(heartbeat, runs) {
-  const nightly = heartbeat?.jobs?.["nightly-triage"] || null;
+  // Fall back to the old `nightly-triage` key so the stamp history recorded before the workflow
+  // was renamed still counts. Without this the strip reads "never recorded" until a new sweep
+  // lands, which looks exactly like a dead machine.
+  const sweep = heartbeat?.jobs?.["portfolio-sweep"] || heartbeat?.jobs?.["nightly-triage"] || null;
+  const checkin = heartbeat?.jobs?.["portfolio-checkin"] || null;
+  // The brief no longer has a workflow of its own — it runs as stage 2 of the sweep. Kept so an
+  // older stamp still renders rather than vanishing.
   const brief = heartbeat?.jobs?.["monday-brief"] || null;
 
-  const lastRun = runs.find((r) => /triage/i.test(r.name || ""));
-  const stampAt = nightly?.at || lastRun?.created_at || null;
+  const lastRun = runs.find((r) => /sweep|triage/i.test(r.name || ""));
+  const stampAt = sweep?.at || lastRun?.created_at || null;
   const hours = stampAt ? Math.max(0, (Date.now() - new Date(stampAt).getTime()) / 3600000) : null;
+  const days = hours === null ? null : Math.floor(hours / 24);
 
   let state = "ok";
   let message;
 
   if (!stampAt) {
     state = "down";
-    message = "No nightly run has ever been recorded. The system may not be running at all.";
+    message = "No sweep has ever been recorded. The system may not be running at all.";
   } else if (lastRun && ["failure", "timed_out"].includes(lastRun.conclusion)) {
     state = "down";
-    message = `Last nightly run ${lastRun.conclusion}.`;
-  } else if (hours > NIGHTLY_STALE_HOURS) {
+    message = `Last sweep ${lastRun.conclusion}.`;
+  } else if (hours > SWEEP_STALE_HOURS) {
     state = "stale";
-    message = `No nightly run in ${Math.floor(hours)}h — it should run daily. ` +
+    message = `No sweep in ${days}d — it should run every Sunday. ` +
       "GitHub disables scheduled workflows after 60 days of repo inactivity.";
   } else {
-    message = `Nightly triage ran ${Math.floor(hours)}h ago.`;
+    message = days >= 1
+      ? `Portfolio sweep ran ${days}d ago.`
+      : `Portfolio sweep ran ${Math.floor(hours)}h ago.`;
   }
+
+  const lastSweepRun = lastRun
+    ? { conclusion: lastRun.conclusion, at: lastRun.created_at, url: lastRun.html_url }
+    : null;
 
   return {
     state,
     message,
-    nightly,
+    sweep,
+    checkin,
     brief,
-    lastNightlyRun: lastRun
-      ? { conclusion: lastRun.conclusion, at: lastRun.created_at, url: lastRun.html_url }
-      : null,
+    lastSweepRun,
+    // `nightly` and `lastNightlyRun` are aliases for the previous field names. A browser holding a
+    // cached copy of the old index.html would otherwise render blanks against the new Function —
+    // and a cached tab is indistinguishable from a failed deploy, which has cost debugging time
+    // here before (docs/FAILURE-MODES.md).
+    nightly: sweep,
+    lastNightlyRun: lastSweepRun,
     history: (heartbeat?.history || []).slice(0, 10)
   };
 }
@@ -90,7 +114,7 @@ async function repoActivity(env, fullName) {
 
 // The idea bench, unpacked for the dashboard.
 //
-// The bench only works if the owner reacts to it — the nightly agent distils those reactions into
+// The bench only works if the owner reacts to it — the sweep distils those reactions into
 // the learning section and picks better next time. Leaving the bench visible only on GitHub meant
 // the one input the feature depends on lived somewhere the owner didn't want to go, so the whole
 // loop sat open. Everything here is read-only; reactions post back through /api/issue's `comment`
@@ -115,6 +139,32 @@ function parseIdeas(body) {
     });
   }
   return out;
+}
+
+// The status board, unpacked for the dashboard.
+//
+// The board is a `system` issue, which means isProject() excludes it and it would otherwise be
+// invisible here — and the owner's standing requirement is that nothing needs a trip to GitHub.
+// Only the region the sweep rewrites is returned; anything they wrote around it stays theirs.
+function statusBoard(issues) {
+  const board = (issues || []).find((i) => isSystem(i) && i.title === STATUS_TITLE);
+  if (!board) return null;
+
+  const body = board.body || "";
+  const s = body.indexOf(STATUS_START);
+  const e = body.indexOf(STATUS_END);
+  const markdown = s !== -1 && e !== -1 && e > s
+    ? body.slice(s + STATUS_START.length, e).trim()
+    : "";
+
+  return {
+    number: board.number,
+    url: board.html_url,
+    updatedAt: board.updated_at,
+    // A board that has never been written says so, rather than rendering its own placeholder as
+    // if it were a real assessment.
+    markdown: /^_No sweep has run yet/.test(markdown) ? "" : markdown
+  };
 }
 
 async function ideaBench(env, issues) {
@@ -259,11 +309,13 @@ async function build(env) {
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0] || null;
 
   const bench = await ideaBench(env, issues);
+  const board = statusBoard(issues);
 
   return {
     generated: new Date().toISOString(),
     repo: `${owner}/${repo}`,
     health: machineHealth(heartbeat, runs),
+    board,
     portfolio: {
       cap: CAP,
       active: projects.filter((p) => p.status === "active").length,

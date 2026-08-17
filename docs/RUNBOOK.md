@@ -66,7 +66,7 @@ Nothing else. It cannot push code and cannot touch Cloudflare or DNS.
 4. Copy the `sk-ant-oat…` value straight into the repo secret. Never paste it anywhere else.
 5. Delete the codespace at https://github.com/codespaces
 
-**These tokens expire.** When the nightly job starts failing with an auth error, repeat this —
+**These tokens expire.** When the scheduled runs start failing with an auth error, repeat this —
 it's the single most likely cause of a dead machine, and `report-failure.mjs` names it first.
 
 **Alternative: an API key.** https://console.anthropic.com → API keys → Create key, stored as
@@ -143,24 +143,68 @@ drag-and-drop uploader cannot do this — that's the gotcha that cost time befor
 
 ---
 
-## 3. Daily / weekly rhythm
+## 3. Weekly rhythm
 
 | When | What | Where |
 |---|---|---|
-| 02:17 CT daily | Nightly triage — one unit of work per `active`/`hot` project | issue comments |
-| 05:33 CT daily | Second attempt — no-ops if the 02:17 run already succeeded | — |
-| Mon 07:23 CT | Weekly brief | new issue labeled `brief` |
+| **Sun 21:17 CT** | `portfolio-sweep` — reads every `active`/`hot` project's source, rewrites the status board, posts findings, then writes the weekly brief | status board + issue comments + a `brief` issue |
+| Mon 02:33 CT | Second attempt — no-ops if the Sunday run already succeeded | — |
+| **Wed + Fri 02:17 CT** | `portfolio-checkin` — light. Catches what changed, and gets a handoff packet out for anything approved midweek | issue comments, often none |
 | Any time | Quick capture | dashboard → new `background` issue |
 
-## 3b. The idea bench
+Three scheduled runs a week, not seven. The manager's job is to find work, not do it — and the
+Claude subscription it runs on is the same one your build sessions draw from, so a nightly cadence
+was spending quota on the wrong half of the system.
 
-The nightly agent also proposes **1–3 new project ideas** per run — never zero. They go to a single rolling
+### What the check-ins are for
+
+They are deliberately narrow, and **a check-in that posts nothing is working correctly.** They:
+
+- produce a handoff packet when you `/build` something midweek, so you aren't waiting until Sunday
+- answer a question you left on a project issue
+- notice a project that just broke or just stopped
+
+They do **not** read project source, rewrite the status board, propose ideas, or file spinoffs —
+all of those need the full source reading that only Sunday does. A check-in reasoning about code it
+cannot see is exactly the confident-guess failure `CLAUDE.md` forbids.
+
+## 3a. The status board
+
+The Sunday sweep rewrites one rolling issue titled **📊 Portfolio status** with the current state of
+every `active`/`hot` project: a state (`healthy` / `needs-attention` / `blocked` / `drifting`),
+what changed, the top finding with a cited file path, and what needs you. It carries the `system`
+label, so it never counts against the active/hot cap.
+
+It is rendered at the top of the dashboard's left column — you should not need to open the issue.
+
+**It is a board, not a log.** Each sweep replaces it wholesale. History lives in the project issues
+and the weekly briefs.
+
+The board is an issue rather than a file in this repo for a structural reason: the agents hold no
+write credentials and cannot commit anything. Issues are the only place the posting scripts can
+write. See §5.
+
+## 3b. Handoff packets — how work actually gets done
+
+The manager does not build. When you comment `/build` on an issue, the next run posts a **handoff
+packet** on it: a copy-pasteable block naming the repo and branch, the problem, cited evidence,
+what "done" looks like, what's out of scope, and known traps.
+
+Paste it into a fresh Claude Code session that has repo access. That session does the work and
+opens a PR. The packet restates gate 3 inside itself, so a session that never reads `CLAUDE.md`
+still knows not to self-merge.
+
+At most two packets per run. A packet is not re-posted once it exists on an issue.
+
+## 3c. The idea bench
+
+The sweep also proposes **1–3 new project ideas** per run — never zero. They go to a single rolling
 issue titled **💡 Idea bench**, never to a project issue and never as new issues of their own —
 an idea nobody asked for should not cost a triage decision. It carries the `system` label, so it
 is excluded from the project list and never counts against the active/hot cap.
 
-The Monday brief harvests the week's best and surfaces **at most three** in a new section 6. So
-generation is nightly and cheap; publication is weekly and restrained.
+The brief harvests from the whole bench and surfaces **at most three** in section 6. Check-ins add
+nothing to the bench: idea generation on a run that read no source is noise.
 
 **It always returns something.** Both prompts require at least one idea, and an empty section in
 the brief is rendered as a gap with a warning rather than as a legitimate "nothing this week".
@@ -170,10 +214,10 @@ the brief is rendered as a gap with a warning rather than as a legitimate "nothi
 Reacting on the bench is the whole mechanism. One line is enough — *"more like this"*,
 *"never again"*, *"good but not now"*.
 
-Each run the agent reads every reaction you have ever left there, plus a distilled
+Each sweep reads every reaction you have ever left there, plus a distilled
 **"What the agent has learned about your taste"** section kept in the bench issue body, and
 rewrites that section from what it now believes. Keeping the distillation in the body rather than
-re-deriving it nightly means it compounds instead of decaying, and it stays visible.
+re-deriving it each run means it compounds instead of decaying, and it stays visible.
 
 **You can edit that section by hand.** If it has drawn the wrong conclusion, correcting it there
 is the fastest way to fix future suggestions — the agent reads your version back on the next run
@@ -183,7 +227,7 @@ so anything you write around it survives.
 Saying nothing teaches it nothing: with no reactions, it keeps guessing from your charters alone.
 **Turning it off:** close the bench issue. Nothing recreates it unless the agent has ideas to
 post, and it will simply reopen a fresh one — so if you want it off for good, say so in
-`docs/prompts/nightly-triage.md` instead.
+`docs/prompts/portfolio-sweep.md` instead.
 
 Section 6 is an addition beyond `docs/WEEKLY-BRIEF.md`, which is kept verbatim to spec. It sits
 last deliberately: nothing above it should be pushed down the page by ideas nobody asked for.
@@ -193,12 +237,12 @@ not corrected for — nothing in this system is time-sensitive.
 
 **Both crons deliberately avoid :00.** GitHub delays scheduled workflows under load, and the top
 of the hour is the most contended minute; their docs recommend scheduling off the hour. The first
-real nightly run was scheduled for 07:00 UTC and had not started 31 minutes later, so the crons
+real scheduled run was set for 07:00 UTC and had not started 31 minutes later, so the crons
 moved to `:17` and `:23`.
 
 A late scheduled run is normal and is **not** a failure — GitHub gives no guarantee of
-punctuality, only that it fires eventually. The dashboard reflects this: it goes amber after 30h
-without a nightly run, not after 30 minutes. Do not go looking for a bug because a run is an hour
+punctuality, only that it fires eventually. The dashboard reflects this: it goes amber after 8
+days without a sweep, not after 30 minutes. Do not go looking for a bug because a run is an hour
 late.
 
 ### "You've hit your org's monthly spend limit"
@@ -216,7 +260,7 @@ the first succeeded. A window exhaustion on the first attempt **does not** open 
 `blocked:human` issue — only the day's final attempt escalates, because that label has to keep
 meaning "a human is actually needed."
 
-If both attempts fail this way on the same day, the ceiling is genuinely too low for daily runs.
+If both attempts fail this way, the ceiling is genuinely too low even for a weekly sweep.
 Real options then: check https://claude.ai/settings/usage, or switch to `ANTHROPIC_API_KEY` with
 a hard cap set in the console — both workflows already accept either credential, so it is a
 secret swap rather than a rewrite.
@@ -239,7 +283,7 @@ secret swap rather than a rewrite.
 4. Swap `background` → `active`.
 
 A project with no kill criteria is not ready to leave `background`. The dashboard flags this
-under "Waiting on you," and the nightly agent calls it out.
+under "Waiting on you," and the sweep calls it out.
 
 **If the code was built in a different Claude session,** use
 [`docs/CHARTER-HANDOFF.md`](CHARTER-HANDOFF.md) — a prompt to hand that session so it writes the
@@ -279,7 +323,7 @@ Separate from the agent. An interactive session (like the one that set this up) 
 through the Claude GitHub App, which is installed per-repository. If a session says
 *"you don't have access to killjoy00/<repo>"*, grant it at
 **https://github.com/settings/installations** → the Claude app → **Repository access** → add the
-repo. This is unrelated to `GH_API_TOKEN` and does not affect the nightly agent.
+repo. This is unrelated to `GH_API_TOKEN` and does not affect the scheduled runs.
 
 ## 4c. Revisiting kill criteria
 
@@ -291,7 +335,7 @@ Review kill criteria by: 2026-09-10
 ```
 
 Once that date passes, the project appears under **Waiting on you** on the dashboard, and the
-Monday brief is required to raise it in DRIFT with a concrete recommendation — keep the
+weekly brief is required to raise it in DRIFT with a concrete recommendation — keep the
 thresholds, change them to specific new numbers, or kill the project. "Worth revisiting" is
 explicitly not an acceptable answer.
 
@@ -304,8 +348,8 @@ This is a convention, not part of `docs/CHARTER-TEMPLATE.md`; that file is kept 
 The agents hold **no write credentials**. Each run is three stages:
 
 1. `collect-context.mjs` (has a token) → `.agent/context.json`
-2. `claude` (no token, no `Bash`, no `gh`) → reads that file, writes `.agent/triage.json`
-3. `post-triage.mjs` (has a token) → validates and posts
+2. `claude` (no token, no `Bash`, no `gh`) → reads that file, writes `.agent/sweep.json`
+3. `post-sweep.mjs` (has a token) → validates and posts
 
 Every issue number in the model's output must appear in the allowlist from stage 1. So the worst
 case for a fully manipulated model is a bad comment on one of your own issues — it cannot push
@@ -345,7 +389,7 @@ fix the deploy, don't fight the settings screen.
 
 That's the case the heartbeat exists for. Two independent signals:
 
-- The dashboard health strip goes amber after 30h without a nightly run.
+- The dashboard health strip goes amber after 8 days without a sweep.
 - Any failed run files a `blocked:human` issue, which emails you via GitHub.
 
 If both are quiet and no comments appeared, the agent ran and decided there was nothing to do —
@@ -353,11 +397,27 @@ check the run artifacts (`.agent/` is uploaded on every run, kept 14 days).
 
 ### Testing the alerting path
 
-Actions → nightly-triage → Run workflow → tick **simulate_failure**. You should get a
-`🔴 nightly-triage failed` issue labeled `blocked:human`. Close it afterwards.
+Actions → portfolio-sweep → Run workflow → tick **simulate_failure**. You should get a
+`🔴 portfolio-sweep failed` issue labeled `blocked:human`. Close it afterwards.
+
+Note that `portfolio-checkin` deliberately does **not** file a `blocked:human` issue when it fails
+on an exhausted Claude usage window — losing one light run needs no human, and that label has to
+keep meaning a human is actually needed. Real failures there (a missing secret, a broken script)
+still file. Either way §5 of the weekly brief lists every failed run.
 
 There's also a **dry_run** input on both workflows: runs the agent, prints what it *would* post,
-posts nothing.
+posts nothing. `portfolio-sweep` additionally takes a **stage** input (`both` / `sweep` / `brief`)
+so the brief can be re-run on its own without redoing the source reading.
+
+### Running the self-test
+
+`npm test` (`scripts/selftest.mjs`) exercises the pure logic — status-board rendering, handoff
+packet formatting, and the gate that decides whether a packet may be posted at all. No token and no
+network. Run it after touching anything under `scripts/lib/`.
+
+It cannot cover the parts that call GitHub: this sandbox's `GITHUB_TOKEN` is a proxy placeholder
+that Node's `fetch` rejects, so those paths are only exercised in Actions. See
+`docs/FAILURE-MODES.md`.
 
 ---
 

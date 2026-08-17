@@ -1,6 +1,6 @@
 // Enforces the hard cap from CLAUDE.md: at most 10 issues labeled `active` or `hot`.
 // Per the rule, going over does not silently proceed — it files a blocked:human issue and
-// asks the owner to cut. Exits non-zero only with STRICT=true, so a normal nightly run still
+// asks the owner to cut. Exits non-zero only with STRICT=true, so a normal scheduled run still
 // does its work while making the overage impossible to miss.
 
 import { readFile } from "node:fs/promises";

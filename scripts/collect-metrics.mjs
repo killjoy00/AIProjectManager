@@ -75,7 +75,7 @@ async function main() {
     timedOut: week.timed_out,
     cancelled: week.cancelled,
     failed: week.failure,
-    // A nightly run that hits the workflow timeout is the clearest sign of truncation.
+    // A run that hits the workflow timeout is the clearest sign of truncation.
     truncationSuspected: week.timed_out > 0,
     note: week.timed_out > 0
       ? "At least one run hit its timeout — agent work was cut short, not completed."
